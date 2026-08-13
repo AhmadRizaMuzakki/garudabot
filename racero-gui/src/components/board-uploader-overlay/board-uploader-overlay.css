@@ -1,0 +1,73 @@
+/* compiler-overlay.css */
+
+/* Import Scratch's core PostCSS variables */
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Using Scratch's PostCSS simple variables */
+  background-color: $ui-modal-overlay;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 5000; /* Standard high z-index in Scratch */
+}
+
+.modal {
+  background-color: $ui-white;
+  border-radius: 8px; /* Or you can use $space if you want Scratch's unit */
+  width: 600px;
+  max-width: 90%;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  margin: 0 0 15px 0;
+  font-size: 1.25rem;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: $text-primary;
+}
+
+.terminal {
+  background-color: #1e1e1e;
+  color: #00ff00;
+  font-family: monospace;
+  height: 300px;
+  padding: 15px;
+  border-radius: 4px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 15px;
+}
+
+.button {
+  padding: 10px 20px;
+  /* Changed from $ui-primary to the exact Scratch Blue hex code */
+  background-color: #4C97FF;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.button:disabled {
+  /* Changed from $ui-primary-transparent to a hardcoded rgba value */
+  background-color: rgba(76, 151, 255, 0.5);
+  cursor: default;
+}

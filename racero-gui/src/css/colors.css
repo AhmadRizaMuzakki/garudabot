@@ -1,0 +1,47 @@
+$ui-primary: hsla(194, 15%, 97%, 1);
+$ui-secondary: hsla(194, 15%, 93%, 1);
+$ui-tertiary: hsla(194, 15%, 85%, 1);
+
+$ui-modal-overlay: hsla(194, 15%, 60%, 0.9);
+
+$ui-white: hsla(0, 100%, 100%, 1);
+$ui-white-dim: hsla(0, 100%, 100%, 0.75);
+$ui-white-transparent: hsla(0, 100%, 100%, 0.25);
+$ui-transparent: hsla(0, 100%, 100%, 0);
+
+$ui-black-transparent: hsla(0, 0%, 0%, 0.15);
+
+$text-primary: hsla(194, 15%, 33%, 1);
+$text-primary-transparent: hsla(194, 15%, 33%, 0.75);
+
+$motion-primary: hsla(194, 15%, 60%, 1);
+$motion-tertiary: hsla(194, 15%, 45%, 1);
+
+$looks-secondary: hsla(194, 15%, 45%, 1);
+$looks-transparent: hsla(194, 15%, 45%, 0.35);
+$looks-light-transparent: hsla(194, 15%, 45%, 0.15);
+$looks-secondary-dark: hsla(194, 15%, 35%, 1);
+
+$red-primary: hsla(25, 95%, 53%, 1);
+$red-tertiary: hsla(25, 95%, 43%, 1);
+
+$sound-primary: hsla(194, 15%, 60%, 1);
+$sound-tertiary: hsla(194, 15%, 45%, 1);
+
+$control-primary: hsla(35, 100%, 55%, 1);
+$data-primary: hsla(25, 80%, 60%, 1);
+
+$pen-primary: hsla(194, 15%, 25%, 1);
+$pen-transparent: hsla(194, 15%, 25%, 0.25);
+$pen-tertiary: hsla(194, 15%, 15%, 1);
+
+$error-primary: hsla(25, 95%, 53%, 1);
+$error-light: hsla(25, 95%, 80%, 1);
+$error-transparent: hsla(25, 95%, 53%, 0.25);
+
+$extensions-primary: hsla(194, 15%, 25%, 1);
+$extensions-tertiary: hsla(194, 15%, 15%, 1);
+$extensions-transparent: hsla(194, 15%, 25%, 0.35);
+$extensions-light: hsla(194, 15%, 90%, 1);
+
+$drop-highlight: hsla(194, 15%, 85%, 1);

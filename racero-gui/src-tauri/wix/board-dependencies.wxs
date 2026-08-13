@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="BoardDependenciesInstaller" Guid="E6D59A22-6F7E-4F12-8A21-5B336A4F9210">
+        <RegistryKey Root="HKCU" Key="Software\RaceroScratch\Installer" Action="createAndRemoveOnUninstall">
+          <RegistryValue Name="ArduinoDepsInstalled" Value="1" Type="integer" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <Binary Id="ArduinoCliBinary" SourceFile="../../../../bin/arduino-cli-x86_64-pc-windows-msvc.exe" />
+
+    <!-- 1. Update Indexes -->
+    <CustomAction Id="CA_EnableSource"     BinaryKey="ArduinoCliBinary" ExeCommand="config set library.enable_unsafe_install true" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_UpdateIndex"      BinaryKey="ArduinoCliBinary" ExeCommand="core update-index" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_UpdateIndexESP32" BinaryKey="ArduinoCliBinary" ExeCommand="core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_UpdateLibIndex"   BinaryKey="ArduinoCliBinary" ExeCommand="lib update-index" Execute="immediate" Return="ignore" Impersonate="yes" />
+
+    <!-- 2. Install Cores -->
+    <CustomAction Id="CA_InstallAvr"       BinaryKey="ArduinoCliBinary" ExeCommand="core install arduino:avr" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallESP32"     BinaryKey="ArduinoCliBinary" ExeCommand="core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallRaceroAvr" BinaryKey="ArduinoCliBinary" ExeCommand="core install racero:avr --additional-urls https://raw.githubusercontent.com/zacknuv/RaceroHUNASupport/refs/heads/main/package_racero_index.json" Execute="immediate" Return="ignore" Impersonate="yes" />
+
+    <!-- 3. Install Libraries -->
+    <CustomAction Id="CA_InstallFirmata"       BinaryKey="ArduinoCliBinary" ExeCommand="lib install --git-url https://github.com/zacknuv/firmata.git" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallESP32Servo"    BinaryKey="ArduinoCliBinary" ExeCommand="lib install ESP32Servo" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallServo"         BinaryKey="ArduinoCliBinary" ExeCommand="lib install Servo" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallWifi"          BinaryKey="ArduinoCliBinary" ExeCommand="lib install Wifi" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallOLEDAscii"     BinaryKey="ArduinoCliBinary" ExeCommand="lib install SSD1306Ascii" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="CA_InstallLiquidCrystal" BinaryKey="ArduinoCliBinary" ExeCommand="lib install LiquidCrystal_I2C" Execute="immediate" Return="ignore" Impersonate="yes" />
+
+    <UI>
+      <ProgressText Action="CA_EnableSource">Enabling untrusted source...</ProgressText>
+      <ProgressText Action="CA_UpdateIndex">Downloading Arduino package index...</ProgressText>
+      <ProgressText Action="CA_UpdateIndexESP32">Downloading ESP32 package index...</ProgressText>
+      <ProgressText Action="CA_UpdateLibIndex">Downloading Arduino Library index...</ProgressText>
+      <ProgressText Action="CA_InstallAvr">Installing Arduino AVR Core...</ProgressText>
+      <ProgressText Action="CA_InstallESP32">Installing Arduino ESP32 Core...</ProgressText>
+      <ProgressText Action="CA_InstallRaceroAvr">Installing Racero AVR Core...</ProgressText>
+      <ProgressText Action="CA_InstallFirmata">Installing Firmata library...</ProgressText>
+      <ProgressText Action="CA_InstallESP32Servo">Installing ESP32 Servo Engine...</ProgressText>
+      <ProgressText Action="CA_InstallServo">Installing AVR Servo library...</ProgressText>
+      <ProgressText Action="CA_InstallWifi">Installing Wifi library...</ProgressText>
+      <ProgressText Action="CA_InstallOLEDAscii">Installing SSD1306Ascii library...</ProgressText>
+      <ProgressText Action="CA_InstallLiquidCrystal">Installing LiquidCrystal_I2C library...</ProgressText>
+    </UI>
+
+    <InstallExecuteSequence>
+      <Custom Action="CA_EnableSource"          Before="InstallFinalize">NOT Installed</Custom>
+      <Custom Action="CA_UpdateIndex"           After="CA_EnableSource">NOT Installed</Custom>
+      <Custom Action="CA_UpdateIndexESP32"      After="CA_UpdateIndex">NOT Installed</Custom>
+      <Custom Action="CA_UpdateLibIndex"        After="CA_UpdateIndexESP32">NOT Installed</Custom>
+      <Custom Action="CA_InstallAvr"            After="CA_UpdateLibIndex">NOT Installed</Custom>
+      <Custom Action="CA_InstallESP32"          After="CA_InstallAvr">NOT Installed</Custom>
+      <Custom Action="CA_InstallRaceroAvr"      After="CA_InstallESP32">NOT Installed</Custom>
+      <Custom Action="CA_InstallFirmata"        After="CA_InstallRaceroAvr">NOT Installed</Custom>
+      <Custom Action="CA_InstallESP32Servo"     After="CA_InstallFirmata">NOT Installed</Custom>
+      <Custom Action="CA_InstallServo"          After="CA_InstallESP32Servo">NOT Installed</Custom>
+      <Custom Action="CA_InstallWifi"           After="CA_InstallServo">NOT Installed</Custom>
+      <Custom Action="CA_InstallOLEDAscii"      After="CA_InstallWifi">NOT Installed</Custom>
+      <Custom Action="CA_InstallLiquidCrystal"  After="CA_InstallOLEDAscii">NOT Installed</Custom>
+    </InstallExecuteSequence>
+
+  </Fragment>
+</Wix>

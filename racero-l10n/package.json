@@ -1,0 +1,88 @@
+{
+  "name": "racero-l10n",
+  "version": "3.18.3",
+  "description": "Localization for the Racero Scratch components",
+  "main": "./dist/l10n.js",
+  "browser": "./src/index.js",
+  "bin": {
+    "build-i18n-src": "./scripts/build-i18n-src.js",
+    "tx-push-src": "./scripts/tx-push-src.js"
+  },
+  "scripts": {
+    "extract": "formatjs extract \"src/**/*.js\" --out-file temp/en.json --id-interpolation-pattern \"[sha512:contenthash:base64:6]\"",
+    "build": "npm run clean && npm run extract && npm run build:data && webpack --progress --colors --bail",
+    "build:data": "node scripts/build-data",
+    "clean": "rimraf ./dist ./locales temp && mkdirp dist locales temp",
+    "lint": "npm run lint:js && npm run lint:json",
+    "lint:js": "eslint . --ext .js",
+    "lint:json": "jshint -e .json www editor/blocks editor/extensions editor/interface editor/paint-editor",
+    "prepare": "",
+    "pull:blocks": "node scripts/tx-pull-editor scratch-editor blocks ./editor/blocks/",
+    "pull:editor": "npm run pull:blocks && npm run pull:extensions && npm run pull:paint && npm run pull:interface",
+    "pull:extensions": "node scripts/tx-pull-editor scratch-editor extensions ./editor/extensions/",
+    "pull:help": "npm run pull:help:names && npm run pull:help:articles",
+    "pull:help:articles": "./scripts/tx-pull-help-articles.js",
+    "pull:help:names": "./scripts/tx-pull-help-names.js",
+    "pull:interface": "node scripts/tx-pull-editor scratch-editor interface ./editor/interface/",
+    "pull:paint": "node scripts/tx-pull-editor scratch-editor paint-editor ./editor/paint-editor/",
+    "pull:www": "node scripts/tx-pull-www ./www",
+    "push:help": "./scripts/tx-push-help.js",
+    "sync:help": "npm run push:help && npm run pull:help",
+    "test": "npm run lint:js && npm run validate:editor && npm run validate:www && npm run build && npm run lint:json",
+    "update": "scripts/update-translations.sh",
+    "validate:blocks": "node scripts/validate-translations ./editor/blocks/",
+    "validate:editor": "npm run validate:blocks && npm run validate:extensions && npm run validate:interface && npm run validate:paint",
+    "validate:extensions": "node scripts/validate-translations ./editor/extensions/ && node scripts/validate-extension-inputs",
+    "validate:interface": "node scripts/validate-translations ./editor/interface/",
+    "validate:paint": "node scripts/validate-translations ./editor/paint-editor/",
+    "validate:www": "node scripts/validate-www ./www"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scratchfoundation/scratch-l10n.git"
+  },
+  "author": "Racer Robotic Indonesia",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/LLK/scratch-l10n/issues"
+  },
+  "homepage": "https://github.com/scratchfoundation/scratch-l10n#readme",
+  "dependencies": {
+    "@transifex/api": "4.3.0",
+    "download": "^8.0.0",
+    "transifex": "1.6.6"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "18.6.0",
+    "@commitlint/config-conventional": "18.6.0",
+    "@formatjs/cli": "^6.12.2",
+    "async": "3.2.5",
+    "esbuild-loader": "^4.4.3",
+    "eslint": "8.17.0",
+    "eslint-config-scratch": "9.0.3",
+    "eslint-plugin-import": "2.29.1",
+    "eslint-plugin-react": "^7.5.1",
+    "format-message-cli": "6.2.4",
+    "format-message-parse": "6.2.4",
+    "glob": "7.2.3",
+    "husky": "8.0.3",
+    "jshint": "2.13.6",
+    "json": "^9.0.6",
+    "jsonlint": "1.6.3",
+    "lodash.defaultsdeep": "4.6.1",
+    "mkdirp": "^0.5.6",
+    "node-fetch": "^2.6.0",
+    "p-limit": "2.3.0",
+    "p-queue": "3.2.0",
+    "rimraf": "^2.7.1",
+    "scratch-semantic-release-config": "1.0.8",
+    "semantic-release": "19.0.5",
+    "webpack": "^4.6.0",
+    "webpack-cli": "^3.1.2"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  }
+}

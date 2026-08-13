@@ -1,0 +1,31 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+.modalContent {
+    width: 420px;
+    background-color: $ui-white;
+    border-color: $ui-black-transparent;
+}
+
+/* Bypass CSS Module hashing to force-hide the Modal's close button */
+.modalContent [class*="close-button"],
+.modalContent [class*="header-item-close"] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+.label {
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    text-align: center;
+}
+
+.scanning {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}

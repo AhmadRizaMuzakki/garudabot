@@ -1,0 +1,73 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+.modalContent {
+    width: 420px;
+    background-color: $ui-white;
+    border-color: $ui-black-transparent;
+}
+
+.body {
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    background-color: $ui-white;
+    color: $text-primary;
+}
+
+.label {
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    text-align: center;
+}
+
+.boardList {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+    flex-direction: column;
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.boardButton {
+    background: $ui-white;
+    border: 1px solid $ui-black-transparent;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    font-weight: bold;
+    color: $text-primary;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* Hover state using the guaranteed primary UI theme color */
+.boardButton:hover {
+    border-color: $ui-primary;
+    /* Instead of a transparent shadow, we change the background slightly */
+    background: rgba(76, 151, 255, 0.05); /* Very light blue tint */
+    color: $ui-primary;
+}
+
+.boardSubtext {
+    font-weight: normal;
+    font-size: 0.85em;
+    /* Use the standard text color but lower the opacity for the secondary feel */
+    color: $text-primary;
+    opacity: 0.6;
+}
+
+.scanning {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
