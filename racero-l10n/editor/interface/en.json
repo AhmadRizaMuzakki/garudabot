@@ -93,6 +93,8 @@
     "gui.extensionLibrary.requires": "Requires",
     "gui.extensionLibrary.collaboration": "Collaboration with",
     "gui.library.filterPlaceholder": "Search",
+    "gui.blocks.searchHint": "Type to search blocks",
+    "gui.blocks.searchNoResults": "No blocks found",
     "gui.library.allTag": "All",
     "gui.loader.message1": "Creating blocks …",
     "gui.loader.message2": "Loading sprites …",

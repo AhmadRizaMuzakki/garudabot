@@ -20,6 +20,7 @@ import DragConstants from '../lib/drag-constants';
 import defineDynamicBlock from '../lib/define-dynamic-block';
 import {DEFAULT_THEME, getColorsForTheme, themeMap} from '../lib/themes';
 import {injectExtensionBlockTheme, injectExtensionCategoryTheme} from '../lib/themes/blockHelpers';
+import ToolboxSearch from '../lib/toolbox-search';
 
 import {connect} from 'react-redux';
 import {updateToolbox} from '../reducers/toolbox';
@@ -79,7 +80,10 @@ class Blocks extends React.Component {
             'onWorkspaceUpdate',
             'onWorkspaceMetricsChange',
             'setBlocks',
-            'setLocale'
+            'setLocale',
+            'getToolboxSearchPlaceholder',
+            'getToolboxSearchHint',
+            'getToolboxSearchNoResults'
         ]);
         this.RaceroBlocks.prompt = this.handlePromptStart;
         this.RaceroBlocks.statusButtonCallback = this.handleConnectionModalStart;
@@ -109,6 +113,14 @@ class Blocks extends React.Component {
             {rtl: this.props.isRtl, toolbox: this.props.toolboxXML, colours: getColorsForTheme(this.props.theme)}
         );
         this.workspace = this.RaceroBlocks.inject(this.blocks, workspaceConfig);
+        this.toolboxSearch = new ToolboxSearch({
+            workspace: this.workspace,
+            Blockly: this.RaceroBlocks,
+            getPlaceholder: this.getToolboxSearchPlaceholder,
+            getHint: this.getToolboxSearchHint,
+            getNoResults: this.getToolboxSearchNoResults
+        });
+        this.toolboxSearch.attach();
 
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
@@ -201,6 +213,10 @@ class Blocks extends React.Component {
     }
     componentWillUnmount () {
         this.detachVM();
+        if (this.toolboxSearch) {
+            this.toolboxSearch.dispose();
+            this.toolboxSearch = null;
+        }
         this.workspace.dispose();
         clearTimeout(this.toolboxUpdateTimeout);
 
@@ -235,6 +251,7 @@ class Blocks extends React.Component {
 
         const categoryId = this.workspace.toolbox_.getSelectedCategoryId();
         const offset = this.workspace.toolbox_.getCategoryScrollOffset();
+        const searching = this.toolboxSearch && this.toolboxSearch.active;
         this.workspace.updateToolbox(this.props.toolboxXML);
         this._renderedToolboxXML = this.props.toolboxXML;
 
@@ -243,17 +260,31 @@ class Blocks extends React.Component {
         // Using the setter function will rerender the entire toolbox which we just rendered.
         this.workspace.toolboxRefreshEnabled_ = true;
 
-        const currentCategoryPos = this.workspace.toolbox_.getCategoryPositionById(categoryId);
-        const currentCategoryLen = this.workspace.toolbox_.getCategoryLengthById(categoryId);
-        if (offset < currentCategoryLen) {
-            this.workspace.toolbox_.setFlyoutScrollPos(currentCategoryPos + offset);
-        } else {
-            this.workspace.toolbox_.setFlyoutScrollPos(currentCategoryPos);
+        if (!searching) {
+            const currentCategoryPos = this.workspace.toolbox_.getCategoryPositionById(categoryId);
+            const currentCategoryLen = this.workspace.toolbox_.getCategoryLengthById(categoryId);
+            if (offset < currentCategoryLen) {
+                this.workspace.toolbox_.setFlyoutScrollPos(currentCategoryPos + offset);
+            } else {
+                this.workspace.toolbox_.setFlyoutScrollPos(currentCategoryPos);
+            }
         }
 
         const queue = this.toolboxUpdateQueue;
         this.toolboxUpdateQueue = [];
         queue.forEach(fn => fn());
+        if (this.toolboxSearch) {
+            this.toolboxSearch.syncAfterToolboxUpdate();
+        }
+    }
+    getToolboxSearchPlaceholder () {
+        return this.props.messages['gui.library.filterPlaceholder'] || 'Search';
+    }
+    getToolboxSearchHint () {
+        return this.props.messages['gui.blocks.searchHint'] || 'Type to search blocks';
+    }
+    getToolboxSearchNoResults () {
+        return this.props.messages['gui.blocks.searchNoResults'] || 'No blocks found';
     }
 
     withToolboxUpdates (fn) {

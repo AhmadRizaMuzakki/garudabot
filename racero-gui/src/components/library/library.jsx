@@ -127,21 +127,33 @@ class LibraryComponent extends React.Component {
     handleFilterClear () {
         this.setState({filterQuery: ''});
     }
+    getItemSearchText (dataItem) {
+        const toText = value => {
+            if (!value) return '';
+            if (typeof value === 'string') return value;
+            if (value.props && (value.props.id || value.props.defaultMessage)) {
+                try {
+                    return this.props.intl.formatMessage(value.props);
+                } catch (e) {
+                    return value.props.defaultMessage || '';
+                }
+            }
+            return '';
+        };
+        const parts = [
+            toText(dataItem.name),
+            toText(dataItem.description),
+            dataItem.extensionId || '',
+            ...(dataItem.tags || [])
+        ];
+        return parts.join('\n').toLowerCase();
+    }
     getFilteredData () {
         if (this.state.selectedTag === 'all') {
             if (!this.state.filterQuery) return this.props.data;
+            const query = this.state.filterQuery.toLowerCase();
             return this.props.data.filter(dataItem => (
-                (dataItem.tags || [])
-                    // Second argument to map sets `this`
-                    .map(String.prototype.toLowerCase.call, String.prototype.toLowerCase)
-                    .concat(dataItem.name ?
-                        (typeof dataItem.name === 'string' ?
-                        // Use the name if it is a string, else use formatMessage to get the translated name
-                            dataItem.name : this.props.intl.formatMessage(dataItem.name.props)
-                        ).toLowerCase() :
-                        null)
-                    .join('\n') // unlikely to partially match newlines
-                    .indexOf(this.state.filterQuery.toLowerCase()) !== -1
+                this.getItemSearchText(dataItem).indexOf(query) !== -1
             ));
         }
         return this.props.data.filter(dataItem => (

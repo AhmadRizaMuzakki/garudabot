@@ -93,6 +93,8 @@
     "gui.extensionLibrary.requires": "Memerlukan",
     "gui.extensionLibrary.collaboration": "Kolaborasi dengan",
     "gui.library.filterPlaceholder": "Cari",
+    "gui.blocks.searchHint": "Ketik untuk mencari block",
+    "gui.blocks.searchNoResults": "Block tidak ditemukan",
     "gui.library.allTag": "Semua",
     "gui.loader.message1": "Membuat balok-balok …",
     "gui.loader.message2": "Memuat sprite-sprite …",

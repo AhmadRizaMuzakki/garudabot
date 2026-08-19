@@ -93,6 +93,8 @@
     "gui.extensionLibrary.requires": "Mbutuhake",
     "gui.extensionLibrary.collaboration": "Kolaborasi karo",
     "gui.library.filterPlaceholder": "Golek",
+    "gui.blocks.searchHint": "Ketik kanggo nggoleki blok",
+    "gui.blocks.searchNoResults": "Blok ora ketemu",
     "gui.library.allTag": "Kabeh",
     "gui.loader.message1": "Nggawe blok-blok...",
     "gui.loader.message2": "Ngemot sprite...",

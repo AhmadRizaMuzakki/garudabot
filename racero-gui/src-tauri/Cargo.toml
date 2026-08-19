@@ -1,6 +1,6 @@
 [package]
 name = "garudabot"
-version = "0.2.4"
+version = "0.2.5"
 description = "An Education Platform for Games, IoT, and AI."
 authors = ["garudabot"]
 license = ""

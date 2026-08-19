@@ -93,6 +93,51 @@
     font-size: 0.65rem;
 }
 
+.blocks :global(.toolboxSearchOverlay) {
+    position: absolute;
+    top: 0.5rem;
+    left: 60px; /* category menu width */
+    z-index: $z-index-extension-button;
+    display: flex;
+    align-items: center;
+    width: 15.25rem;
+    height: 2.25rem;
+    padding: 0 0.75rem;
+    box-sizing: border-box;
+    background: $ui-white;
+    border-radius: 10rem;
+    box-shadow: 0 0 0 1px $ui-black-transparent;
+    pointer-events: auto;
+}
+
+[dir="rtl"] .blocks :global(.toolboxSearchOverlay) {
+    left: auto;
+    right: 60px;
+}
+
+.blocks :global(.toolboxSearchInput) {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: $text-primary;
+    font-size: 0.75rem;
+    -webkit-appearance: none;
+}
+
+.blocks :global(.toolboxSearchInput)::placeholder {
+    color: $text-primary;
+    opacity: 0.5;
+}
+
+.blocks :global(.toolboxSearchSpacer),
+.blocks :global(.toolboxSearchSpacer .blocklyFlyoutLabelBackground),
+.blocks :global(.toolboxSearchSpacer .blocklyFlyoutLabelText) {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .blocks :global(.blocklyMinimalBody) {
     min-width: auto;
     min-height: auto;

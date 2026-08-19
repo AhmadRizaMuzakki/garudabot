@@ -60,6 +60,7 @@ export class ArduinoCompiler {
             'argument_reporter_boolean': this.handleArgumentReporter,
 
             // Pins
+            'pins_boardStart': this.handlePinsBoardStart,
             'pins_digitalWrite': this.handlePinsDigitalWrite,
             'pins_pwmWrite': this.handlePinsPwmWrite,
             'pins_analogWrite': this.handlePinsAnalogWrite,
@@ -314,6 +315,10 @@ export class ArduinoCompiler {
         const condition = this.getInput(block, 'CONDITION');
         const substack = this.getInput(block, 'SUBSTACK');
         return `while (${condition}) {\n${substack}\n}`; 
+    }
+
+    handlePinsBoardStart() {
+        return '';
     }
 
     handleControlForever(block, isSetup) {
@@ -701,44 +706,37 @@ bool isIRButtonPressed(uint32_t targetButton) {
         }
     }
 
-    generate() {
-        this.resetState();
-
-        const target = this.vm.editingTarget;
-        if (!target) return '';
-        
-        this.blocks = target.blocks;
-
-        this.generateVariables();
-        this.generateProcedures();
-
+    findSetupEntryBlockId() {
         const topBlocks = this.blocks.getScripts();
-        let startBlockId = null;
-        
+        let fallbackId = null;
+
         for (let i = 0; i < topBlocks.length; i++) {
             const blockId = topBlocks[i];
             const block = this.blocks.getBlock(blockId);
+            if (!block) continue;
+
             if (block.opcode === 'pins_boardStart') {
-                startBlockId = topBlocks[i];
-                break;
-            } 
+                return block.next || null;
+            }
+
+            if (
+                !fallbackId &&
+                block.opcode !== 'procedures_definition' &&
+                block.opcode !== 'procedures_prototype'
+            ) {
+                fallbackId = blockId;
+            }
         }
 
-        if (!startBlockId) return '// No Board Start Block Found!';
+        return fallbackId;
+    }
 
-        const firstBlockId = this.blocks.getBlock(startBlockId).next;
-        const setupCode = this.traverseBlock(firstBlockId, true);
-        
-        let loopCode = '';
-        if (this.loopSubstack) {
-            loopCode = this.traverseBlock(this.loopSubstack, false);
-        }
-
+    renderSketch(setupCode, loopCode) {
         const includesStr = Array.from(this.includes).join('\n').trim();
         const globalsStr = Array.from(this.globals).join('\n').trim();
         const proceduresStr = Array.from(this.procedures).join('\n').trim();
         const setupsStr = Array.from(this.setups).join('\n').trim();
-        
+
         const code = `
         ${includesStr}
 
@@ -773,6 +771,30 @@ bool isIRButtonPressed(uint32_t targetButton) {
             "e4x": false,
             "indent_empty_lines": false
         });
+    }
+
+    generate() {
+        this.resetState();
+
+        const target = this.vm && this.vm.editingTarget;
+        if (!target || !target.blocks) {
+            return this.renderSketch('', '');
+        }
+
+        this.blocks = target.blocks;
+
+        this.generateVariables();
+        this.generateProcedures();
+
+        const setupEntryId = this.findSetupEntryBlockId();
+        const setupCode = this.traverseBlock(setupEntryId, true);
+
+        let loopCode = '';
+        if (this.loopSubstack) {
+            loopCode = this.traverseBlock(this.loopSubstack, false);
+        }
+
+        return this.renderSketch(setupCode, loopCode);
     }
 }
 
