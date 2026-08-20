@@ -20,7 +20,7 @@ import DragConstants from '../lib/drag-constants';
 import defineDynamicBlock from '../lib/define-dynamic-block';
 import {DEFAULT_THEME, getColorsForTheme, themeMap} from '../lib/themes';
 import {injectExtensionBlockTheme, injectExtensionCategoryTheme} from '../lib/themes/blockHelpers';
-import ToolboxSearch from '../lib/toolbox-search';
+import ToolboxSearch from '../lib/toolbox-search'; // pencarian blok: kategori + overlay flyout
 
 import {connect} from 'react-redux';
 import {updateToolbox} from '../reducers/toolbox';
@@ -113,6 +113,7 @@ class Blocks extends React.Component {
             {rtl: this.props.isRtl, toolbox: this.props.toolboxXML, colours: getColorsForTheme(this.props.theme)}
         );
         this.workspace = this.RaceroBlocks.inject(this.blocks, workspaceConfig);
+        // Pencarian toolbox harus di-attach setelah inject agar menu kategori sudah ada.
         this.toolboxSearch = new ToolboxSearch({
             workspace: this.workspace,
             Blockly: this.RaceroBlocks,
@@ -251,6 +252,7 @@ class Blocks extends React.Component {
 
         const categoryId = this.workspace.toolbox_.getSelectedCategoryId();
         const offset = this.workspace.toolbox_.getCategoryScrollOffset();
+        // Jangan pulihkan scroll kategori selama pencarian menguasai flyout.
         const searching = this.toolboxSearch && this.toolboxSearch.active;
         this.workspace.updateToolbox(this.props.toolboxXML);
         this._renderedToolboxXML = this.props.toolboxXML;
@@ -277,12 +279,15 @@ class Blocks extends React.Component {
             this.toolboxSearch.syncAfterToolboxUpdate();
         }
     }
+    /** Label baris kategori dan placeholder overlay. */
     getToolboxSearchPlaceholder () {
         return this.props.messages['gui.library.filterPlaceholder'] || 'Search';
     }
+    /** Pesan flyout saat pencarian terbuka tapi query masih kosong. */
     getToolboxSearchHint () {
         return this.props.messages['gui.blocks.searchHint'] || 'Type to search blocks';
     }
+    /** Pesan flyout saat query tidak menemukan blok. */
     getToolboxSearchNoResults () {
         return this.props.messages['gui.blocks.searchNoResults'] || 'No blocks found';
     }

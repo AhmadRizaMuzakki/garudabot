@@ -1,14 +1,33 @@
+/**
+ * Pencarian blok di menu kategori toolbox (gaya Scratch).
+ *
+ * Menambah baris Cari di paling atas toolbox. Saat aktif, input overlay
+ * memfilter isi flyout dari semua kategori (termasuk callback ekstensi).
+ * Pencocokan bersifat AND untuk setiap kata yang dipisah spasi, terhadap
+ * nama kategori, tipe blok, field XML, dan teks tampilan blok jika ada.
+ *
+ * Aktifkan lewat kategori Cari atau Ctrl/Cmd+F. Escape atau memilih
+ * kategori lain mengembalikan flyout biasa.
+ */
 import debounce from 'lodash.debounce';
 import searchIcon from '../components/blocks/icon--search.svg';
 
+/** Class CSS pada baris kategori palsu "Cari". */
 const SEARCH_ITEM_CLASS = 'toolboxSearchItem';
+/** Class CSS pada kotak pencarian mengambang di atas flyout. */
 const SEARCH_OVERLAY_CLASS = 'toolboxSearchOverlay';
+/** Class CSS pada <input> overlay. */
 const SEARCH_INPUT_CLASS = 'toolboxSearchInput';
+/**
+ * Label flyout tak terlihat sebagai spacer. Blockly mengabaikan <sep>
+ * di awal flyout, jadi label dummy ini diperlukan agar hasil geser
+ * ke bawah overlay.
+ */
 const SEARCH_SPACER_CLASS = 'toolboxSearchSpacer';
-// Blockly ignores <sep> before the first flyout item, so a dummy label
-// is required to push search results below the overlay.
+/** Jarak ekstra (px) setelah label spacer. */
 const SEARCH_SPACER_GAP = 24;
 
+/** Escape teks agar aman dimasukkan ke XML flyout Blockly. */
 const escapeXml = text => String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -16,6 +35,14 @@ const escapeXml = text => String(text)
     .replace(/"/g, '&quot;');
 
 class ToolboxSearch {
+    /**
+     * @param {object} options
+     * @param {Blockly.WorkspaceSvg} options.workspace Workspace editor utama.
+     * @param {object} options.Blockly Namespace Blockly / RaceroBlocks.
+     * @param {function(): string} options.getPlaceholder Label kategori dan placeholder input.
+     * @param {function(): string} options.getHint Pesan saat query masih kosong.
+     * @param {function(): string} options.getNoResults Pesan saat tidak ada yang cocok.
+     */
     constructor (options) {
         this.workspace = options.workspace;
         this.Blockly = options.Blockly;
@@ -23,12 +50,16 @@ class ToolboxSearch {
         this.getHint = options.getHint;
         this.getNoResults = options.getNoResults;
 
+        /** Overlay pencarian sedang tampil dan menguasai flyout. */
         this.active = false;
         this.query = '';
+        /** Node DOM item kategori Cari. */
         this.searchItem = null;
         this.overlay = null;
         this.input = null;
+        /** Workspace tanpa tampilan untuk membuat blok agar bisa `toString()`. */
         this.searchWorkspace = null;
+        /** Peta outerHTML XML -> teks yang bisa dicari. */
         this.searchTextCache = Object.create(null);
 
         this.applyFilterNow = this.applyFilterNow.bind(this);
@@ -37,10 +68,15 @@ class ToolboxSearch {
         this.handleQueryInput = this.handleQueryInput.bind(this);
         this.activate = this.activate.bind(this);
     }
+    /**
+     * Patch show/select toolbox, pasang overlay + baris kategori, bind Ctrl/Cmd+F.
+     * Panggil sekali setelah Blockly.inject.
+     */
     attach () {
         const toolbox = this.workspace.getToolbox();
         if (!toolbox) return;
 
+        // Tetap tampilkan hasil filter jika Blockly mencoba menampilkan seluruh toolbox.
         this._originalShowAll = toolbox.showAll_.bind(toolbox);
         toolbox.showAll_ = () => {
             if (this.active) {
@@ -50,6 +86,8 @@ class ToolboxSearch {
             }
         };
 
+        // Klik kategori asli keluar dari mode cari. optShouldScroll === false
+        // dipakai internal saat toolbox dibangun ulang; biarkan Cari tetap terpilih.
         this._originalSetSelectedItem = toolbox.setSelectedItem.bind(toolbox);
         toolbox.setSelectedItem = (item, optShouldScroll) => {
             if (this.active && item && optShouldScroll !== false) {
@@ -71,6 +109,7 @@ class ToolboxSearch {
         this.insertSearchItem();
         document.addEventListener('keydown', this.handleDocumentKeyDown);
     }
+    /** Lepas listener, kembalikan method toolbox, hapus DOM/workspace. */
     dispose () {
         document.removeEventListener('keydown', this.handleDocumentKeyDown);
         this.applyFilter.cancel();
@@ -97,6 +136,10 @@ class ToolboxSearch {
         this.searchItem = null;
         this.searchTextCache = Object.create(null);
     }
+    /**
+     * XML toolbox diganti (locale, ekstensi, variabel). Pasang ulang baris Cari,
+     * buang cache teks, dan pertahankan hasil jika pencarian masih aktif.
+     */
     syncAfterToolboxUpdate () {
         this.searchTextCache = Object.create(null);
         this.insertSearchItem();
@@ -112,6 +155,7 @@ class ToolboxSearch {
             this.applyFilterNow();
         }
     }
+    /** Perbarui teks placeholder pada label kategori dan input. */
     updateMessages () {
         if (this.searchItem) {
             const label = this.searchItem.querySelector('.scratchCategoryMenuItemLabel');
@@ -121,6 +165,7 @@ class ToolboxSearch {
             this.input.placeholder = this.getPlaceholder();
         }
     }
+    /** Buat input overlay dan sisipkan ke injection div Blockly. */
     createOverlay () {
         const injectionDiv = this.workspace.getParentSvg().parentNode;
         this.overlay = document.createElement('div');
@@ -147,6 +192,7 @@ class ToolboxSearch {
         this.overlay.addEventListener('mousedown', event => event.stopPropagation());
         injectionDiv.appendChild(this.overlay);
     }
+    /** Sisipkan (atau pakai ulang) kategori Cari sebagai baris pertama toolbox. */
     insertSearchItem () {
         const toolbox = this.workspace.getToolbox();
         const table = toolbox && toolbox.categoryMenu_ && toolbox.categoryMenu_.table;
@@ -195,6 +241,10 @@ class ToolboxSearch {
             this.searchItem.classList.add('categorySelected');
         }
     }
+    /**
+     * Ctrl/Cmd+F membuka pencarian, kecuali fokus sudah di kolom teks lain.
+     * Jika fokus sudah di input pencarian, shortcut tetap mengaktifkan/memilihnya.
+     */
     handleDocumentKeyDown (event) {
         if (!(event.ctrlKey || event.metaKey) || event.key !== 'f') return;
         const target = event.target;
@@ -206,10 +256,12 @@ class ToolboxSearch {
         event.preventDefault();
         this.activate();
     }
+    /** Perbarui flyout (debounce) saat pengguna mengetik. */
     handleQueryInput () {
         this.query = this.input.value;
         this.applyFilter();
     }
+    /** Tampilkan overlay, sorot kategori Cari, dan isi flyout. */
     activate () {
         const toolbox = this.workspace.getToolbox();
         this.active = true;
@@ -229,6 +281,12 @@ class ToolboxSearch {
             }
         }, 0);
     }
+    /**
+     * Sembunyikan UI pencarian dan kosongkan query.
+     * @param {object} [opts]
+     * @param {boolean} [opts.restoreFlyout] Panggil toolbox.showAll_() asli.
+     * @param {boolean} [opts.restoreSelection] Pilih ulang kategori sebelumnya.
+     */
     deactivate ({restoreFlyout, restoreSelection} = {}) {
         this.active = false;
         this.query = '';
@@ -246,6 +304,7 @@ class ToolboxSearch {
             }
         }
     }
+    /** Ganti isi flyout dengan petunjuk, hasil kosong, atau blok yang cocok. */
     applyFilterNow () {
         if (!this.active) return;
         const flyout = this.workspace.getFlyout();
@@ -265,6 +324,7 @@ class ToolboxSearch {
 
         flyout.show(this.createSpacerNodes().concat(matches));
     }
+    /** Anak elemen Blockly.Xml, tanpa text node. */
     xmlChildElements (xml) {
         const nodes = [];
         for (let i = 0; i < xml.childNodes.length; i++) {
@@ -274,6 +334,7 @@ class ToolboxSearch {
         }
         return nodes;
     }
+    /** Label tak terlihat + jarak agar hasil berada di bawah overlay. */
     createSpacerNodes () {
         return this.xmlChildElements(this.Blockly.Xml.textToDom(
             '<xml>' +
@@ -282,6 +343,7 @@ class ToolboxSearch {
             '</xml>'
         ));
     }
+    /** Tampilkan spacer plus satu label flyout (petunjuk atau hasil kosong). */
     showFlyoutLabel (text) {
         const flyout = this.workspace.getFlyout();
         flyout.show(this.xmlChildElements(this.Blockly.Xml.textToDom(
@@ -292,6 +354,13 @@ class ToolboxSearch {
             '</xml>'
         )));
     }
+    /**
+     * Telusuri setiap kategori toolbox (XML statis dan isi dari callback)
+     * lalu kembalikan klon node BLOCK/BUTTON yang teks pencariannya memuat
+     * setiap kata query. Event Blockly dimatikan saat blok diinstansiasi.
+     * @param {string} query String pencarian yang sudah lowercase dan di-trim.
+     * @returns {Element[]}
+     */
     collectMatches (query) {
         const toolbox = this.workspace.getToolbox();
         const Blockly = this.Blockly;
@@ -300,6 +369,7 @@ class ToolboxSearch {
         const seen = Object.create(null);
 
         const pushIfMatch = (node, extraText) => {
+            // extraText = nama kategori, mis. "gerak" ikut mencocokkan blok gerak.
             if (!node || !node.tagName) return;
             const tag = node.tagName.toUpperCase();
             if (tag !== 'BLOCK' && tag !== 'BUTTON') return;
@@ -334,12 +404,20 @@ class ToolboxSearch {
         }
         return matches;
     }
+    /** Workspace tanpa tampilan (lazy) untuk `block.toString()` yang bisa dicari. */
     getSearchWorkspace () {
         if (!this.searchWorkspace) {
             this.searchWorkspace = new this.Blockly.Workspace();
         }
         return this.searchWorkspace;
     }
+    /**
+     * Bangun teks pencarian ter-cache: opcode, teks/field XML, dan block.toString().
+     * Instansiasi bisa gagal untuk blok yang butuh workspace ter-render; tipe
+     * dan field tetap dipakai dalam kasus itu.
+     * @param {Element} node Node XML toolbox.
+     * @returns {string}
+     */
     getNodeSearchText (node) {
         const cacheKey = node.outerHTML;
         if (this.searchTextCache[cacheKey]) {
@@ -365,7 +443,7 @@ class ToolboxSearch {
                 const block = Blockly.Xml.domToBlock(node.cloneNode(true), searchWorkspace);
                 parts.push(block.toString());
             } catch (e) {
-                // Some blocks need a rendered workspace or runtime menus; type/fields still match.
+                // Beberapa blok butuh workspace ter-render atau menu runtime; tipe/field tetap dicocokkan.
             }
         }
 

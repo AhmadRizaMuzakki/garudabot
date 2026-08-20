@@ -93,10 +93,11 @@
     font-size: 0.65rem;
 }
 
+/* Kotak pencarian mengambang di atas flyout (lib/toolbox-search.js). */
 .blocks :global(.toolboxSearchOverlay) {
     position: absolute;
     top: 0.5rem;
-    left: 60px; /* category menu width */
+    left: 60px; /* lebar menu kategori */
     z-index: $z-index-extension-button;
     display: flex;
     align-items: center;
@@ -131,6 +132,7 @@
     opacity: 0.5;
 }
 
+/* Spacer flyout tak terlihat agar hasil berada di bawah overlay. */
 .blocks :global(.toolboxSearchSpacer),
 .blocks :global(.toolboxSearchSpacer .blocklyFlyoutLabelBackground),
 .blocks :global(.toolboxSearchSpacer .blocklyFlyoutLabelText) {
