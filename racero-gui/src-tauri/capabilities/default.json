@@ -29,6 +29,45 @@
           ],
           "name": "bin/arduino-cli",
           "sidecar": true
+        },
+        {
+          "args": [
+            "compile",
+            "--upload",
+            "--fqbn",
+            { "validator": "\\S+" },
+            "--port",
+            { "validator": "\\S+" },
+            "--protocol",
+            "network",
+            { "validator": ".*" }
+          ],
+          "name": "bin/arduino-cli",
+          "sidecar": true
+        },
+        {
+          "args": [
+            "compile",
+            "--upload",
+            "--fqbn",
+            { "validator": "\\S+" },
+            "--port",
+            { "validator": "\\S+" },
+            "--upload-property",
+            { "validator": "\\S+" },
+            { "validator": ".*" }
+          ],
+          "name": "bin/arduino-cli",
+          "sidecar": true
+        },
+        {
+          "args": [
+            "core",
+            "install",
+            { "validator": "\\S+" }
+          ],
+          "name": "bin/arduino-cli",
+          "sidecar": true
         }
       ]
     },

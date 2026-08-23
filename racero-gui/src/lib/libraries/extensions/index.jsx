@@ -58,6 +58,10 @@ import recognitionInsetIconURL from './recognition/inset.png';
 import mrt_pinsIconURL from './mrt_pins/background.png';
 import mrt_pinsInsetIconURL from './mrt_pins/inset.png';
 
+// Aset gambar kartu Extension Library untuk ESP32 Robots
+import robotesp32IconURL from './robotesp32/background.png';
+import robotesp32InsetIconURL from './robotesp32/inset.png';
+
 export default [
     {
         name: (
@@ -385,5 +389,21 @@ export default [
             />
         ),
         featured: true
+    },
+    {
+        // Kartu Extension Library: modul robot ESP32 (motor, sensor, MP3, IR, display)
+        name: 'ESP32 Robots',
+        extensionId: 'robotesp32',
+        iconURL: robotesp32IconURL,
+        insetIconURL: robotesp32InsetIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="ESP32 robot blocks: motor, sensor, MP3, IR, display."
+                description="Robots ESP32 extension description"
+                id="gui.extension.robotesp32.description"
+            />
+        ),
+        featured: true
     }
 ];
+

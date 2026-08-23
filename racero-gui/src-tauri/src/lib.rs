@@ -150,37 +150,61 @@ fn board_disconnect(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, port: String) -> Result<String, String> {
-    let sketch_name = "racero_project";
+fn is_ipv4_address(value: &str) -> bool {
+    let parts: Vec<&str> = value.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    parts.iter().all(|part| part.parse::<u8>().is_ok())
+}
 
-    let mut sketch_dir = std::env::temp_dir();
-    sketch_dir.push(sketch_name);
-    if !sketch_dir.exists() {
-        fs::create_dir_all(&sketch_dir).map_err(|e| format!("Arduino CLI: {}", e))?;
+fn is_network_serial_port(port: &str) -> bool {
+    port.starts_with("net:")
+}
+
+fn is_network_ota_port(port: &str) -> bool {
+    is_ipv4_address(port)
+}
+
+fn looks_like_ip_and_port(port: &str) -> bool {
+    let Some((host, port_num)) = port.rsplit_once(':') else {
+        return false;
+    };
+    is_ipv4_address(host) && port_num.parse::<u16>().is_ok()
+}
+
+fn normalize_upload_port(port: &str, fqbn: &str) -> (String, Vec<String>) {
+    let mut extra_args = Vec::new();
+
+    if is_network_serial_port(port) {
+        extra_args.push("--upload-property".to_string());
+        extra_args.push("upload.speed=115200".to_string());
+        return (port.to_string(), extra_args);
     }
 
-    let sketch_file_path = sketch_dir.join(format!("{}.ino", sketch_name));
-    fs::write(&sketch_file_path, code).map_err(|e| format!("Arduino CLI: {}", e))?;
-
-    let mut args = vec![
-        "compile",
-        "--upload",
-        "--fqbn",
-        &fqbn,
-        "--port",
-        &port,
-        sketch_dir.to_str().unwrap(),
-    ];
-
-    if fqbn == "racero:avr:32:hunaupload=enabled" {
-        args.push("--build-property");
-        args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR");
+    if looks_like_ip_and_port(port) {
+        extra_args.push("--upload-property".to_string());
+        extra_args.push("upload.speed=115200".to_string());
+        return (format!("net:{}", port), extra_args);
     }
 
+    if is_network_ota_port(port) && fqbn.contains("esp32") {
+        extra_args.push("--protocol".to_string());
+        extra_args.push("network".to_string());
+        extra_args.push("--discovery-timeout".to_string());
+        extra_args.push("30s".to_string());
+        return (port.to_string(), extra_args);
+    }
+
+    (port.to_string(), extra_args)
+}
+
+async fn run_arduino_cli_with_logs(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
     let sidecar = app.shell()
         .sidecar("arduino-cli")
         .map_err(|e| format!("Arduino CLI: {}", e))?;
+
+    let mut exit_code = 0;
     let (mut rx, _child) = sidecar
         .args(args)
         .spawn()
@@ -197,6 +221,7 @@ async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, por
                 let _ = app.emit("compiler-log", line);
             }
             CommandEvent::Terminated(payload) => {
+                exit_code = payload.code.unwrap_or(-1);
                 let status = format!("\nProcess finished with code: {:?}", payload.code);
                 let _ = app.emit("compiler-log", status);
             }
@@ -204,17 +229,138 @@ async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, por
         }
     }
 
+    Ok(exit_code)
+}
+
+#[tauri::command]
+async fn board_install_esp01_bridge(app: AppHandle, port: String) -> Result<String, String> {
+    let _ = run_arduino_cli_with_logs(
+        &app,
+        vec![
+            "core".to_string(),
+            "install".to_string(),
+            "esp8266:esp8266".to_string(),
+        ],
+    ).await;
+
+    let firmware_code = include_str!("firmware/Esp01ArduinoBridge.ino");
+    let sketch_dir = std::env::temp_dir().join("Esp01ArduinoBridge");
+    fs::create_dir_all(&sketch_dir).map_err(|e| e.to_string())?;
+    fs::write(sketch_dir.join("Esp01ArduinoBridge.ino"), firmware_code)
+        .map_err(|e| e.to_string())?;
+
+    let fqbn = "esp8266:esp8266:esp01_1m";
+    let exit_code = run_arduino_cli_with_logs(
+        &app,
+        vec![
+            "compile".to_string(),
+            "--upload".to_string(),
+            "--fqbn".to_string(),
+            fqbn.to_string(),
+            "--port".to_string(),
+            port,
+            sketch_dir.to_str().unwrap().to_string(),
+        ],
+    ).await?;
+
+    if exit_code == 0 {
+        Ok(format!(
+            "Firmware bridge terpasang. Hotspot: Garudabot-Bridge / 12345678, port TCP {}.",
+            8266
+        ))
+    } else {
+        Err(format!(
+            "Gagal flash ESP-01 (exit code {}). Pastikan USB-TTL 3.3V terhubung dan core esp8266 terpasang.",
+            exit_code
+        ))
+    }
+}
+
+#[tauri::command]
+async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, port: String) -> Result<String, String> {
+    let sketch_name = "racero_project";
+
+    let mut sketch_dir = std::env::temp_dir();
+    sketch_dir.push(sketch_name);
+    if !sketch_dir.exists() {
+        fs::create_dir_all(&sketch_dir).map_err(|e| format!("Arduino CLI: {}", e))?;
+    }
+
+    let sketch_file_path = sketch_dir.join(format!("{}.ino", sketch_name));
+    fs::write(&sketch_file_path, code).map_err(|e| format!("Arduino CLI: {}", e))?;
+
+    let (upload_port, mut extra_args) = normalize_upload_port(&port, &fqbn);
+    let mut args = vec![
+        "compile".to_string(),
+        "--upload".to_string(),
+        "--fqbn".to_string(),
+        fqbn.clone(),
+        "--port".to_string(),
+        upload_port.clone(),
+    ];
+    args.append(&mut extra_args);
+
+    if fqbn == "racero:avr:32:hunaupload=enabled" {
+        args.push("--build-property".to_string());
+        args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
+    }
+
+    args.push(sketch_dir.to_str().unwrap().to_string());
+
+    if is_network_serial_port(&upload_port) || looks_like_ip_and_port(&port) {
+        let _ = app.emit(
+            "compiler-log",
+            format!(
+                "Upload WiFi ke Arduino via {} — pastikan PC sudah join hotspot ESP.\n",
+                upload_port
+            ),
+        );
+    }
+
+    let exit_code = run_arduino_cli_with_logs(&app, args).await?;
+
+    if exit_code != 0 {
+        let hint = if is_network_serial_port(&upload_port) || looks_like_ip_and_port(&port) {
+            "\nTips WiFi Arduino+ESP-01:\n\
+             - PC harus terhubung ke hotspot ESP (mis. Garudabot-Bridge atau ESPTest 2)\n\
+             - Cek IP ESP (biasanya 192.168.4.1) dan port bridge (8266 atau 23)\n\
+             - GPIO2 ESP harus ke RESET Arduino lewat kapasitor 100nF\n\
+             - Flash firmware bridge ke ESP-01 sekali via USB-TTL 3.3V"
+        } else if is_network_ota_port(&upload_port) {
+            "\nTips OTA ESP32: PC harus satu jaringan dengan ESP32 dan firmware sudah ada ArduinoOTA."
+        } else {
+            ""
+        };
+        return Err(format!("Upload gagal (exit code {}).{}", exit_code, hint));
+    }
+
     Ok("Compilation cycle complete.".to_string())
+}
+
+fn normalize_port_entry(port: &serde_json::Value) -> serde_json::Value {
+    let address = port["address"].as_str().unwrap_or("").to_string();
+    let label = port["label"]
+        .as_str()
+        .or(port["protocol_label"].as_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(address.as_str())
+        .to_string();
+
+    serde_json::json!({
+        "address": address,
+        "label": label,
+        "protocol": port["protocol"].as_str().unwrap_or("")
+    })
 }
 
 #[tauri::command]
 async fn port_list(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    let is_empty = {
+    let cached_ports = {
         let ports = state.detected_ports.lock().unwrap();
-        ports.is_empty()
+        ports.clone()
     };
 
-    let output = if is_empty {
+    let normalized_ports: Vec<serde_json::Value> = if cached_ports.is_empty() {
         let result = app.shell()
             .sidecar("arduino-cli")
             .unwrap()
@@ -222,13 +368,28 @@ async fn port_list(app: AppHandle, state: State<'_, AppState>) -> Result<String,
             .output()
             .await
             .map_err(|e| e.to_string())?;
-        String::from_utf8_lossy(&result.stdout).to_string()
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&result.stdout))
+                .unwrap_or(serde_json::json!({}));
+
+        parsed["ports"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(normalize_port_entry)
+            .filter(|port| !port["address"].as_str().unwrap_or("").is_empty())
+            .collect()
     } else {
-        let ports = state.detected_ports.lock().unwrap();
-        serde_json::json!({ "detected_ports": *ports }).to_string()
+        cached_ports
+            .iter()
+            .map(normalize_port_entry)
+            .filter(|port| !port["address"].as_str().unwrap_or("").is_empty())
+            .collect()
     };
 
-    Ok(output)
+    Ok(serde_json::json!({ "detected_ports": normalized_ports }).to_string())
 }
 
 #[tauri::command]
@@ -649,8 +810,9 @@ pub fn run() {
                                 let incoming_port = &data["port"];
 
                                 if event_type == "add" {
-                                    if !ports_list.iter().any(|p| p["address"] == incoming_port["address"]) {
-                                        ports_list.push(incoming_port.clone());
+                                    let normalized = normalize_port_entry(incoming_port);
+                                    if !ports_list.iter().any(|p| p["address"] == normalized["address"]) {
+                                        ports_list.push(normalized);
                                     }
                                 } else if event_type == "remove" {
                                     ports_list.retain(|p| p["address"] != incoming_port["address"]);
@@ -671,6 +833,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             board_connect,
             board_disconnect,
+            board_install_esp01_bridge,
             board_compile_and_flash,
             pin_digital_write,
             pin_pwm_write,

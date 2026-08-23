@@ -40,6 +40,11 @@ class Board extends React.Component {
         if (!tauri) return;
 
         const address = this.props.connectedDevice;
+        if (address && (address.startsWith('net:') || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(address))) {
+            window.alert('Live Mode hanya tersedia lewat USB. Untuk WiFi, gunakan Upload Program.');
+            return;
+        }
+
         const fqbn = boards[this.props.vm.runtime.boardConfig.name].fqbn;
 
         this.props.onSetInstalling(true);
