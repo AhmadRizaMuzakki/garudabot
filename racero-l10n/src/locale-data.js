@@ -3,13 +3,19 @@
 import en from './locale-data/en';
 import id from './locale-data/id';
 import jv from './locale-data/jv';
+import su from './locale-data/su';
+import min from './locale-data/min';
+import mdn from './locale-data/mdn';
 
 import {customLocales} from './supported-locales.js';
 
 let localeData = [].concat(
     en,
     id,
-    jv
+    jv,
+    su,
+    min,
+    mdn
 );
 
 for (const lang in customLocales) {

@@ -6,13 +6,28 @@
 const locales = {
     'id': {name: 'Bahasa Indonesia'},
     'jv': {name: 'Basa Jawa'},
+    'su': {name: 'Basa Sunda'},
+    'min': {name: 'Bahasa Padang'},
+    'mdn': {name: 'Bahasa Medan'},
     'en': {name: 'English'},
 };
 
 const customLocales = {
     'jv': {
         locale: 'jv',
-        parentLocale: 'id' 
+        parentLocale: 'id'
+    },
+    'su': {
+        locale: 'su',
+        parentLocale: 'id'
+    },
+    'min': {
+        locale: 'min',
+        parentLocale: 'id'
+    },
+    'mdn': {
+        locale: 'mdn',
+        parentLocale: 'id'
     }
 };
 
