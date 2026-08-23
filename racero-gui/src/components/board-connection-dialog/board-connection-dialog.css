@@ -3,63 +3,145 @@
 
 .modalContent {
     width: 420px;
+    max-width: calc(100vw - 2rem);
     background-color: $ui-white;
     border-color: $ui-black-transparent;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    position: relative;
 }
 
 .body {
     padding: 1.5rem;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     background-color: $ui-white;
     color: $text-primary;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
-.label {
-    margin-bottom: 1rem;
+.statusText {
+    margin: 0;
+    padding: 1.5rem;
     font-size: 1rem;
     text-align: center;
+    line-height: 1.45;
+}
+
+.sectionLabel {
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: $text-primary;
+    opacity: 0.75;
+    text-align: center;
+}
+
+.wifiBlock {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.wifiRow {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.textInput,
+.textInputPort,
+.portSelect {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: $ui-white;
+    color: $text-primary;
+    text-align: center;
+}
+
+.textInput {
+    flex: 1;
+}
+
+.textInputPort {
+    width: 5.5rem;
+    flex-shrink: 0;
+}
+
+.textInput:focus,
+.textInputPort:focus,
+.portSelect:focus {
+    outline: none;
+    border-color: $ui-primary;
 }
 
 .boardList {
     display: flex;
+    flex-direction: column;
     gap: 0.5rem;
     width: 100%;
-    flex-direction: column;
-    max-height: 460px;
+    max-height: 320px;
     overflow-y: auto;
 }
 
 .boardButton {
     background: $ui-white;
-    border: 1px solid $ui-black-transparent;
+    border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 0.5rem;
     padding: 1rem;
+    min-height: 3.25rem;
     font-weight: bold;
+    font-size: 1rem;
     color: $text-primary;
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
-    display: flex;
-    align-items: center;
-    flex-direction: column;
-    justify-content: space-between;
+    width: 100%;
 }
 
-/* Hover state using the guaranteed primary UI theme color */
-.boardButton:hover {
+.boardButton:hover:not(:disabled) {
     border-color: $ui-primary;
-    /* Instead of a transparent shadow, we change the background slightly */
-    background: rgba(76, 151, 255, 0.05); /* Very light blue tint */
+    background: rgba(76, 151, 255, 0.05);
     color: $ui-primary;
 }
 
-.boardSubtext {
-    font-weight: normal;
-    font-size: 0.85em;
-    /* Use the standard text color but lower the opacity for the secondary feel */
+.boardButton:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.installDetails {
+    margin-top: 0.75rem;
+}
+
+.installSummary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
     color: $text-primary;
-    opacity: 0.6;
+    opacity: 0.65;
+    text-align: center;
+    list-style: none;
+}
+
+.installSummary::-webkit-details-marker {
+    display: none;
+}
+
+.installBody {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.portSelect {
+    width: 100%;
+    cursor: pointer;
 }
 
 .scanning {
@@ -70,4 +152,57 @@
     0% { opacity: 0.6; }
     50% { opacity: 1; }
     100% { opacity: 0.6; }
+}
+
+.successOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.92);
+    padding: 1.5rem;
+}
+
+.successCard {
+    text-align: center;
+    width: 100%;
+    animation: successPop 0.25s ease-out;
+}
+
+.successIcon {
+    width: 3.5rem;
+    height: 3.5rem;
+    margin: 0 auto 0.75rem;
+    border-radius: 50%;
+    background: #22c55e;
+    color: $ui-white;
+    font-size: 1.75rem;
+    font-weight: bold;
+    line-height: 3.5rem;
+}
+
+.successTitle {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: $text-primary;
+    margin-bottom: 0.35rem;
+}
+
+.successDetail {
+    font-size: 0.95rem;
+    color: $text-primary;
+    opacity: 0.75;
+}
+
+@keyframes successPop {
+    0% {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
 }

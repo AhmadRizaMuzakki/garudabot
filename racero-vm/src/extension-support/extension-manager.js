@@ -27,11 +27,16 @@ const builtinExtensions = {
     gdxfor: () => require('../extensions/scratch3_gdx_for'),
 
     pins: () => require('../extensions/racero_pins'),
+    // Pins dipisah per board agar toolbox tidak campur pin Uno vs ESP32
+    pinsuno: () => require('../extensions/racero_pins_uno'),
+    pinsesp32: () => require('../extensions/racero_pins_esp32'),
     display: () => require('../extensions/racero_display'),
 	fingers: () => require('../extensions/racero_fingers'),
 	expresive: () => require('../extensions/racero_expresive'),
 	recognition: () => require('../extensions/racero_recognition'),
-    mrtpins: () => require('../extensions/racero_mrt_pins')
+    mrtpins: () => require('../extensions/racero_mrt_pins'),
+    // Extension modul robot ESP32 (opsional, ditambah lewat Extension Library)
+    robotesp32: () => require('../extensions/racero_robots_esp32')
 };
 
 /**
@@ -306,10 +311,15 @@ class ExtensionManager {
             try {
                 let result;
                 switch (blockInfo) {
-                case '---': // separator
+                case '---': // pemisah antar grup blok
                     result = '---';
                     break;
-                default: // an ExtensionBlockMetadata object
+                default: // objek metadata blok extension
+                    // Dukung sub-judul toolbox: "label:Nama Kategori"
+                    if (typeof blockInfo === 'string' && blockInfo.startsWith('label:')) {
+                        result = blockInfo;
+                        break;
+                    }
                     result = this._prepareBlockInfo(serviceName, blockInfo);
                     break;
                 }

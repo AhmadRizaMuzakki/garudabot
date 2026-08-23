@@ -19,8 +19,14 @@
  */
 
 /**
- * @fileoverview Functions for injecting Blockly into a web page.
+ * @fileoverview Fungsi untuk menanamkan (embed) editor Blockly ke dalam halaman web.
+ * File ini bertanggung jawab membuat workspace utama, DOM SVG, serta
+ * inisialisasi event/handler yang dibutuhkan editor blok.
  * @author fraser@google.com (Neil Fraser)
+ *
+ * Catatan:
+ * - Nama file: blockly_embed.js
+ * - Nama API internal tetap Blockly.inject agar kompatibel dengan kode Blockly lama.
  */
 'use strict';
 
@@ -39,18 +45,24 @@ goog.require('goog.ui.Component');
 goog.require('goog.userAgent');
 
 /**
- * Inject a Blockly editor into the specified container element (usually a div).
- * @param {!Element|string} container Containing element, or its ID,
- *     or a CSS selector.
- * @param {Object=} opt_options Optional dictionary of options.
- * @return {!Blockly.Workspace} Newly created main workspace.
+ * Menanamkan editor Blockly ke dalam elemen container (biasanya sebuah div).
+ * Alur singkat:
+ * 1) Validasi container ada di dokumen
+ * 2) Buat DOM SVG editor
+ * 3) Siapkan permukaan drag blok/workspace
+ * 4) Buat dan inisialisasi workspace utama
+ *
+ * @param {!Element|string} container Elemen container, ID elemen,
+ *     atau CSS selector.
+ * @param {Object=} opt_options Opsi konfigurasi editor (opsional).
+ * @return {!Blockly.Workspace} Workspace utama yang baru dibuat.
  */
 Blockly.inject = function(container, opt_options) {
   if (goog.isString(container)) {
     container = document.getElementById(container) ||
         document.querySelector(container);
   }
-  // Verify that the container is in document.
+  // Pastikan container sudah ada di dokumen saat ini.
   if (!goog.dom.contains(document, container)) {
     throw 'Error: container is not in current document.';
   }
@@ -58,14 +70,14 @@ Blockly.inject = function(container, opt_options) {
   var subContainer = goog.dom.createDom('div', 'injectionDiv');
   container.appendChild(subContainer);
 
-  // Open the Field text cache and leave it open. See this issue for more information
-  // https://github.com/LLK/racero-blocks/issues/1004
+  // Buka cache teks Field dan biarkan tetap terbuka.
+  // Lihat: https://github.com/LLK/racero-blocks/issues/1004
   Blockly.Field.startCache();
 
   var svg = Blockly.createDom_(subContainer, options);
 
-  // Create surfaces for dragging things. These are optimizations
-  // so that the broowser does not repaint during the drag.
+  // Buat permukaan drag. Ini optimasi agar browser tidak repaint
+  // terus-menerus saat blok/workspace digeser.
   var blockDragSurface = new Blockly.BlockDragSurfaceSvg(subContainer);
   var workspaceDragSurface = new Blockly.WorkspaceDragSurfaceSvg(subContainer);
 
@@ -79,10 +91,12 @@ Blockly.inject = function(container, opt_options) {
 };
 
 /**
- * Create the SVG image.
- * @param {!Element} container Containing element.
- * @param {!Blockly.Options} options Dictionary of options.
- * @return {!Element} Newly created SVG image.
+ * Membuat elemen SVG utama untuk editor Blockly.
+ * Termasuk definisi filter glow, pattern disabled, dan grid.
+ *
+ * @param {!Element} container Elemen tempat SVG ditempel.
+ * @param {!Blockly.Options} options Opsi konfigurasi Blockly.
+ * @return {!Element} Elemen SVG yang baru dibuat.
  * @private
  */
 Blockly.createDom_ = function(container, options) {
@@ -262,14 +276,16 @@ Blockly.createDom_ = function(container, options) {
 };
 
 /**
- * Create a main workspace and add it to the SVG.
- * @param {!Element} svg SVG element with pattern defined.
- * @param {!Blockly.Options} options Dictionary of options.
- * @param {!Blockly.BlockDragSurfaceSvg} blockDragSurface Drag surface SVG
- *     for the blocks.
- * @param {!Blockly.WorkspaceDragSurfaceSvg} workspaceDragSurface Drag surface
- *     SVG for the workspace.
- * @return {!Blockly.Workspace} Newly created main workspace.
+ * Membuat workspace utama lalu menambahkannya ke SVG editor.
+ * Juga menyiapkan flyout (jika tanpa kategori), scrollbar,
+ * serta komponen UI pendukung (WidgetDiv, DropDownDiv, Tooltip).
+ *
+ * @param {!Element} svg Elemen SVG yang sudah punya pattern/definisi.
+ * @param {!Blockly.Options} options Kamus opsi Blockly.
+ * @param {!Blockly.BlockDragSurfaceSvg} blockDragSurface Surface drag untuk blok.
+ * @param {!Blockly.WorkspaceDragSurfaceSvg} workspaceDragSurface Surface drag
+ *     untuk workspace.
+ * @return {!Blockly.Workspace} Workspace utama yang baru dibuat.
  * @private
  */
 Blockly.createMainWorkspace_ = function(svg, options, blockDragSurface, workspaceDragSurface) {
@@ -345,8 +361,10 @@ Blockly.createMainWorkspace_ = function(svg, options, blockDragSurface, workspac
 };
 
 /**
- * Initialize Blockly with various handlers.
- * @param {!Blockly.Workspace} mainWorkspace Newly created main workspace.
+ * Inisialisasi Blockly: pasang handler event, toolbox/flyout,
+ * scrollbar, dan suara (jika diaktifkan).
+ *
+ * @param {!Blockly.Workspace} mainWorkspace Workspace utama yang baru dibuat.
  * @private
  */
 Blockly.init_ = function(mainWorkspace) {
@@ -407,14 +425,14 @@ Blockly.init_ = function(mainWorkspace) {
 };
 
 /**
- * Bind document events, but only once.  Destroying and reinjecting Blockly
- * should not bind again.
- * Bind events for scrolling the workspace.
- * Most of these events should be bound to the SVG's surface.
- * However, 'mouseup' has to be on the whole document so that a block dragged
- * out of bounds and released will know that it has been released.
- * Also, 'keydown' has to be on the whole document since the browser doesn't
- * understand a concept of focus on the SVG image.
+ * Mengikat event dokumen hanya sekali.
+ * Kalau Blockly dihancurkan lalu ditanam ulang, binding tidak boleh
+ * ditambahkan berulang.
+ *
+ * Event scroll biasanya di permukaan SVG, tetapi:
+ * - mouseup harus di dokumen agar blok yang dilepas di luar area tetap terdeteksi
+ * - keydown harus di dokumen karena browser tidak fokus ke SVG
+ *
  * @private
  */
 Blockly.inject.bindDocumentEvents_ = function() {
@@ -437,9 +455,10 @@ Blockly.inject.bindDocumentEvents_ = function() {
 };
 
 /**
- * Load sounds for the given workspace.
- * @param {string} pathToMedia The path to the media directory.
- * @param {!Blockly.Workspace} workspace The workspace to load sounds for.
+ * Memuat file suara untuk workspace yang diberikan.
+ *
+ * @param {string} pathToMedia Path ke folder media.
+ * @param {!Blockly.Workspace} workspace Workspace tujuan load suara.
  * @private
  */
 Blockly.inject.loadSounds_ = function(pathToMedia, workspace) {
@@ -480,8 +499,8 @@ Blockly.inject.loadSounds_ = function(pathToMedia, workspace) {
 };
 
 /**
- * Modify the block tree on the existing toolbox.
- * @param {Node|string} tree DOM tree of blocks, or text representation of same.
+ * Mengubah pohon blok pada toolbox yang sudah ada.
+ * @param {Node|string} tree Pohon DOM blok, atau representasi teks-nya.
  * @deprecated April 2015
  */
 Blockly.updateToolbox = function(tree) {

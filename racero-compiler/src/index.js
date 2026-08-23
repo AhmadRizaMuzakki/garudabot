@@ -70,6 +70,28 @@ export class ArduinoCompiler {
             'pins_analogRead': this.handlePinsAnalogRead,
             'pins_ultrasonicRead': this.handlePinsUltrasonicRead,
             'pins_map': this.handlePinsMap,
+            // Pins UNO (wrapper board-specific dari RaceroPins)
+            'pinsuno_boardStart': this.handlePinsBoardStart,
+            'pinsuno_digitalWrite': this.handlePinsDigitalWrite,
+            'pinsuno_pwmWrite': this.handlePinsPwmWrite,
+            'pinsuno_analogWrite': this.handlePinsAnalogWrite,
+            'pinsuno_servoWrite': this.handlePinsServoWrite,
+            'pinsuno_buzzerWrite': this.handlePinsBuzzerWrite,
+            'pinsuno_digitalRead': this.handlePinsDigitalRead,
+            'pinsuno_analogRead': this.handlePinsAnalogRead,
+            'pinsuno_ultrasonicRead': this.handlePinsUltrasonicRead,
+            'pinsuno_map': this.handlePinsMap,
+            // Pins ESP32 (wrapper board-specific dari RaceroPins)
+            'pinsesp32_boardStart': this.handlePinsBoardStart,
+            'pinsesp32_digitalWrite': this.handlePinsDigitalWrite,
+            'pinsesp32_pwmWrite': this.handlePinsPwmWrite,
+            'pinsesp32_analogWrite': this.handlePinsAnalogWrite,
+            'pinsesp32_servoWrite': this.handlePinsServoWrite,
+            'pinsesp32_buzzerWrite': this.handlePinsBuzzerWrite,
+            'pinsesp32_digitalRead': this.handlePinsDigitalRead,
+            'pinsesp32_analogRead': this.handlePinsAnalogRead,
+            'pinsesp32_ultrasonicRead': this.handlePinsUltrasonicRead,
+            'pinsesp32_map': this.handlePinsMap,
             
             // Pin Menus
             'pins_menu_digitalValueMenu': this.handleMenuDigitalValue,
@@ -79,6 +101,22 @@ export class ArduinoCompiler {
             'pins_menu_servoPinsMenu': this.handleMenuServoPins,
             'pins_menu_analogInputPinsMenu': this.handleMenuAnalogInputPins,
             'pins_menu_digitalInputPinsMenu': this.handleMenuDigitalInputPins,
+            // Pins UNO Menus
+            'pinsuno_menu_digitalValueMenu': this.handleMenuDigitalValue,
+            'pinsuno_menu_analogOutputPinsMenu': this.handleMenuAnalogOutputPins,
+            'pinsuno_menu_digitalOutputPinsMenu': this.handleMenuDigitalOutputPins,
+            'pinsuno_menu_pwmPinsMenu': this.handleMenuPwmPins,
+            'pinsuno_menu_servoPinsMenu': this.handleMenuServoPins,
+            'pinsuno_menu_analogInputPinsMenu': this.handleMenuAnalogInputPins,
+            'pinsuno_menu_digitalInputPinsMenu': this.handleMenuDigitalInputPins,
+            // Pins ESP32 Menus
+            'pinsesp32_menu_digitalValueMenu': this.handleMenuDigitalValue,
+            'pinsesp32_menu_analogOutputPinsMenu': this.handleMenuAnalogOutputPins,
+            'pinsesp32_menu_digitalOutputPinsMenu': this.handleMenuDigitalOutputPins,
+            'pinsesp32_menu_pwmPinsMenu': this.handleMenuPwmPins,
+            'pinsesp32_menu_servoPinsMenu': this.handleMenuServoPins,
+            'pinsesp32_menu_analogInputPinsMenu': this.handleMenuAnalogInputPins,
+            'pinsesp32_menu_digitalInputPinsMenu': this.handleMenuDigitalInputPins,
 
             // Display
             'display_enableI2cDisplay': this.handleDisplayEnableI2c,
@@ -90,7 +128,57 @@ export class ArduinoCompiler {
             // MRT Motors
             'mrtpins_setMotor': this.handleMrtPinsSetMotor,
             'mrtpins_getIRButton': this.handleMrtPinsGetIRButton,
-            'mrtpins_menu_dcMotorKindMenu': this.handleMenuDcMotorKind
+            'mrtpins_menu_dcMotorKindMenu': this.handleMenuDcMotorKind,
+
+            // Robots ESP32: opcode extension modul robot (motor/sensor/MP3/dll)
+            'robotesp32_generateCode': this.handlePinsBoardStart,
+            'robotesp32_serialPrint': this.handleRobotEsp32SerialPrint,
+            'robotesp32_printValue': this.handleRobotEsp32PrintValue,
+            'robotesp32_constantPi': this.handleRobotEsp32ConstantPi,
+            'robotesp32_toStringValue': this.handleRobotEsp32ToStringValue,
+            'robotesp32_setVarType': this.handleRobotEsp32Noop,
+            'robotesp32_dcMotor': this.handleRobotEsp32DcMotor,
+            'robotesp32_dcMotor130': this.handleRobotEsp32DcMotor130,
+            'robotesp32_servoPinAngle': this.handleRobotEsp32ServoPinAngle,
+            'robotesp32_onboardRgbColor': this.handleRobotEsp32OnboardRgbColor,
+            'robotesp32_onboardRgbValues': this.handleRobotEsp32OnboardRgbValues,
+            'robotesp32_buzzerNoteBeat': this.handleRobotEsp32BuzzerNoteBeat,
+            'robotesp32_buzzerNoteSecond': this.handleRobotEsp32BuzzerNoteSecond,
+            'robotesp32_buzzerNotationSecond': this.handleRobotEsp32BuzzerNotationSecond,
+            'robotesp32_mp3Info': this.handleRobotEsp32Noop,
+            'robotesp32_mp3PlayTrack': this.handleRobotEsp32Noop,
+            'robotesp32_mp3PlaybackControl': this.handleRobotEsp32Noop,
+            'robotesp32_mp3PlaybackMode': this.handleRobotEsp32Noop,
+            'robotesp32_mp3Distance': this.handleRobotEsp32ZeroReporter,
+            'robotesp32_display4Digit': this.handleRobotEsp32Noop,
+            'robotesp32_setColorSensorWhiteBalance': this.handleRobotEsp32Noop,
+            'robotesp32_colorSensorRead': this.handleRobotEsp32ZeroReporter,
+            'robotesp32_pirMotionSensor': this.handleRobotEsp32PirMotionSensor,
+            'robotesp32_lm35Temperature': this.handleRobotEsp32Lm35Temperature,
+            'robotesp32_ultrasonicDistance': this.handleRobotEsp32UltrasonicDistance,
+            'robotesp32_infraredPressed': this.handleRobotEsp32InfraredPressed,
+            'robotesp32_digitalRead': this.handleRobotEsp32DigitalRead,
+            'robotesp32_digitalWrite': this.handleRobotEsp32DigitalWrite,
+            'robotesp32_analogRead': this.handleRobotEsp32AnalogRead,
+            'robotesp32_analogWrite': this.handleRobotEsp32AnalogWrite,
+            'robotesp32_pullupDigitalRead': this.handleRobotEsp32PullupDigitalRead,
+            'robotesp32_stringOfAscii': this.handleRobotEsp32StringOfAscii,
+            'robotesp32_asciiOfString': this.handleRobotEsp32AsciiOfString,
+            'robotesp32_menu_newlineMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_varTypeMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_motorMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_digitalValueMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_buzzerNoteMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_buzzerBeatMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_mp3ControlMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_mp3ModeMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_colorSensorModeMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_irKeyMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_digitalInputPinsMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_digitalOutputPinsMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_pwmPinsMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_servoPinsMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_analogInputPinsMenu': this.handleMenuRobotEsp32Default
         };
 
         for (const key in this.handlers) {
@@ -619,6 +707,188 @@ bool isIRButtonPressed(uint32_t targetButton) {
         return `isIRButtonPressed(${button})`;
     }
 
+    /**
+     * Handler compiler untuk extension Robots ESP32.
+     * Beberapa modul (MP3/display/color) masih noop/fallback
+     * sampai command backend khusus tersedia.
+     */
+    handleRobotEsp32Noop () {
+        return '';
+    }
+
+    /** Reporter fallback: kembalikan 0 jika modul belum didukung penuh. */
+    handleRobotEsp32ZeroReporter () {
+        return '0';
+    }
+
+    /** Serial print dengan opsi newline on/off. */
+    handleRobotEsp32SerialPrint (block) {
+        const text = this.getInput(block, 'TEXT');
+        const newline = block.fields.NEWLINE && block.fields.NEWLINE.value;
+        this.setups.add('Serial.begin(115200);\n');
+        if (newline === 'off') {
+            return `Serial.print(${text});\n`;
+        }
+        return `Serial.println(${text});\n`;
+    }
+
+    /** Cetak nilai ke Serial. */
+    handleRobotEsp32PrintValue (block) {
+        const value = this.getInput(block, 'VALUE');
+        this.setups.add('Serial.begin(115200);\n');
+        return `Serial.println(${value});\n`;
+    }
+
+    /** Konstanta pi. */
+    handleRobotEsp32ConstantPi () {
+        return '3.1415926';
+    }
+
+    /** Konversi nilai ke String Arduino. */
+    handleRobotEsp32ToStringValue (block) {
+        const value = this.getInput(block, 'VALUE');
+        return `String(${value})`;
+    }
+
+    /** Kontrol DC motor M1/M2 lewat pin arah + PWM default ESP32. */
+    handleRobotEsp32DcMotor (block) {
+        const motor = block.fields.MOTOR ? block.fields.MOTOR.value : 'M1';
+        const speed = this.getInput(block, 'SPEED');
+        const dirPin = motor === 'M2' ? 18 : 5;
+        const pwmPin = motor === 'M2' ? 26 : 25;
+        this.setups.add(`pinMode(${dirPin}, OUTPUT);\n`);
+        this.setups.add(`pinMode(${pwmPin}, OUTPUT);\n`);
+        return `digitalWrite(${dirPin}, (${speed}) >= 0 ? HIGH : LOW);\nanalogWrite(${pwmPin}, abs((int)(${speed})));\n`;
+    }
+
+    handleRobotEsp32DcMotor130 (block) {
+        const dirPin = this.getInput(block, 'DIRPIN');
+        const pwmPin = this.getInput(block, 'PWMPIN');
+        const speed = this.getInput(block, 'SPEED');
+        this.setups.add(`pinMode(${dirPin}, OUTPUT);\n`);
+        this.setups.add(`pinMode(${pwmPin}, OUTPUT);\n`);
+        return `digitalWrite(${dirPin}, (${speed}) >= 0 ? HIGH : LOW);\nanalogWrite(${pwmPin}, abs((int)(${speed})));\n`;
+    }
+
+    handleRobotEsp32ServoPinAngle (block) {
+        const pin = this.getInput(block, 'PIN');
+        const angle = this.getInput(block, 'ANGLE');
+        this.includes.add('#include <Servo.h>');
+        this.globals.add(`Servo servo${pin};\n`);
+        this.setups.add(`servo${pin}.attach(${pin});\n`);
+        return `servo${pin}.write(${angle});\n`;
+    }
+
+    handleRobotEsp32OnboardRgbColor (block) {
+        const pin = this.getInput(block, 'PIN');
+        const color = this.getInput(block, 'COLOR');
+        this.setups.add(`pinMode(${pin}, OUTPUT);\n`);
+        return `analogWrite(${pin}, ${color});\n`;
+    }
+
+    handleRobotEsp32OnboardRgbValues (block) {
+        const pin = this.getInput(block, 'PIN');
+        const red = this.getInput(block, 'R');
+        this.setups.add(`pinMode(${pin}, OUTPUT);\n`);
+        return `analogWrite(${pin}, ${red});\n`;
+    }
+
+    handleRobotEsp32BuzzerNoteBeat (block) {
+        const pin = this.getInput(block, 'PIN');
+        const note = block.fields.NOTE ? block.fields.NOTE.value : 262;
+        const beat = block.fields.BEAT ? block.fields.BEAT.value : 500;
+        return `tone(${pin}, ${note}, ${beat});\n`;
+    }
+
+    handleRobotEsp32BuzzerNoteSecond (block) {
+        const pin = this.getInput(block, 'PIN');
+        const note = block.fields.NOTE ? block.fields.NOTE.value : 262;
+        const second = this.getInput(block, 'SECOND');
+        return `tone(${pin}, ${note}, (int)((${second}) * 1000));\n`;
+    }
+
+    handleRobotEsp32BuzzerNotationSecond (block) {
+        const pin = this.getInput(block, 'PIN');
+        const notation = this.getInput(block, 'NOTATION');
+        const second = this.getInput(block, 'SECOND');
+        return `tone(${pin}, 220 + ((int)(${notation}) * 40), (int)((${second}) * 1000));\n`;
+    }
+
+    handleRobotEsp32PirMotionSensor (block) {
+        const pin = this.getInput(block, 'PIN');
+        this.setups.add(`pinMode(${pin}, INPUT);\n`);
+        return `(digitalRead(${pin}) == HIGH)`;
+    }
+
+    handleRobotEsp32Lm35Temperature (block) {
+        const pin = this.getInput(block, 'PIN');
+        this.setups.add(`pinMode(${pin}, INPUT);\n`);
+        return `analogRead(${pin})`;
+    }
+
+    handleRobotEsp32UltrasonicDistance (block) {
+        const trig = this.getInput(block, 'TRIG');
+        const echo = this.getInput(block, 'ECHO');
+        this.setups.add(`pinMode(${trig}, OUTPUT);\npinMode(${echo}, INPUT);`);
+        this.globals.add(`
+float robotEsp32Ultrasonic(int trig, int echo) {
+    digitalWrite(trig, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trig, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trig, LOW);
+    unsigned long duration = pulseIn(echo, HIGH, 30000);
+    return duration * 0.034 / 2.0;
+}`);
+        return `robotEsp32Ultrasonic(${trig}, ${echo})`;
+    }
+
+    handleRobotEsp32InfraredPressed (block) {
+        const pin = this.getInput(block, 'PIN');
+        this.setups.add(`pinMode(${pin}, INPUT);\n`);
+        return `(digitalRead(${pin}) == HIGH)`;
+    }
+
+    handleRobotEsp32DigitalRead (block) {
+        return this.handlePinsDigitalRead(block);
+    }
+
+    handleRobotEsp32DigitalWrite (block) {
+        const pin = this.getInput(block, 'PIN');
+        const value = block.fields.VALUE && block.fields.VALUE.value ? block.fields.VALUE.value : 'LOW';
+        this.setups.add(`pinMode(${pin}, OUTPUT);\n`);
+        return `digitalWrite(${pin}, ${value});\n`;
+    }
+
+    handleRobotEsp32AnalogRead (block) {
+        return this.handlePinsAnalogRead(block);
+    }
+
+    handleRobotEsp32AnalogWrite (block) {
+        return this.handlePinsAnalogWrite(block);
+    }
+
+    handleRobotEsp32PullupDigitalRead (block) {
+        const pin = this.getInput(block, 'PIN');
+        this.setups.add(`pinMode(${pin}, INPUT_PULLUP);\n`);
+        return `digitalRead(${pin})`;
+    }
+
+    handleRobotEsp32StringOfAscii (block) {
+        const code = this.getInput(block, 'CODE');
+        return `String((char)(${code}))`;
+    }
+
+    handleRobotEsp32AsciiOfString (block) {
+        const text = this.getInput(block, 'TEXT');
+        return `(int)(${text})[0]`;
+    }
+
+    handleMenuRobotEsp32Default (block) {
+        const fieldName = Object.keys(block.fields || {})[0];
+        return fieldName ? `${block.fields[fieldName].value}` : '0';
+    }
+
     // --- Compiling Engine ---
     generateProcedures() {
         let procedures = {};
@@ -706,6 +976,10 @@ bool isIRButtonPressed(uint32_t targetButton) {
         }
     }
 
+    /**
+     * Cari blok entry untuk setup().
+     * Mendukung hat Pins lama/baru dan Generate Code dari Robots ESP32.
+     */
     findSetupEntryBlockId() {
         const topBlocks = this.blocks.getScripts();
         let fallbackId = null;
@@ -715,7 +989,9 @@ bool isIRButtonPressed(uint32_t targetButton) {
             const block = this.blocks.getBlock(blockId);
             if (!block) continue;
 
-            if (block.opcode === 'pins_boardStart') {
+            // Hat yang menandai awal program upload
+            if (block.opcode === 'pins_boardStart' || block.opcode === 'pinsuno_boardStart' ||
+                block.opcode === 'pinsesp32_boardStart' || block.opcode === 'robotesp32_generateCode') {
                 return block.next || null;
             }
 

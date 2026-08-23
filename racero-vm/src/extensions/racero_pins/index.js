@@ -11,11 +11,40 @@ const formatMessage = require('format-message');
 
 const iconURI = "data:image/png;base64,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";
 
+/**
+ * Kelas dasar extension Pins.
+ *
+ * Bisa dipakai langsung, atau diwarisi oleh wrapper board-specific
+ * seperti Pins UNO / Pins ESP32 lewat opsi:
+ * - extensionId / extensionName: identitas kategori di toolbox
+ * - forcedBoardName: kunci board agar menu pin tidak berubah
+ * - defaultPins: nilai default pin untuk tiap jenis blok
+ */
 class RaceroPins {
-    constructor (runtime) {
+    /**
+     * @param {object} runtime Runtime Racero VM.
+     * @param {object} [options] Opsi konfigurasi board/extension.
+     */
+    constructor (runtime, options = {}) {
         this.runtime = runtime;
+        this.extensionId = options.extensionId || 'pins';
+        this.extensionName = options.extensionName || 'Pins';
+        this.forcedBoardName = options.forcedBoardName || null;
+        this.defaultPins = Object.assign({
+            digital: 0,
+            pwm: 0,
+            analogWrite: 0,
+            servo: 0,
+            buzzer: 0,
+            digitalRead: 0,
+            analogRead: 0,
+            trig: 0,
+            echo: 0
+        }, options.defaultPins || {});
 
-        if (this.runtime.boardConfig && this.runtime.boardConfig.name) {
+        if (this.forcedBoardName) {
+            this.boardName = this.forcedBoardName;
+        } else if (this.runtime.boardConfig && this.runtime.boardConfig.name) {
             this.boardName = this.runtime.boardConfig.name;
         } else {
             this.boardName = "Arduino Uno";
@@ -24,24 +53,41 @@ class RaceroPins {
             };
         }
 
-        this.runtime.on('PROJECT_LOADED', () => {
-            if (this.runtime.boardConfig) {
-                this.changeBoard(this.runtime.boardConfig.name);
-            }
-        });
+        if (!this.forcedBoardName) {
+            this.runtime.on('PROJECT_LOADED', () => {
+                if (this.runtime.boardConfig) {
+                    this.changeBoard(this.runtime.boardConfig.name);
+                }
+            });
+        }
 
     }
+    /**
+     * Ganti board aktif. Diabaikan jika extension dikunci ke satu board
+     * (contoh: Pins UNO / Pins ESP32).
+     * @param {string} boardName Nama board baru.
+     */
     changeBoard(boardName) {
+        if (this.forcedBoardName) return;
         if (this.boardName === boardName) return;
         this.boardName = boardName;
         this.runtime.boardConfig.name = boardName;
 
         this.runtime.requestBlocksUpdate();
     }
+
+    /**
+     * Ambil pin default untuk jenis blok tertentu.
+     * @param {string} kind Jenis pin (digital, pwm, servo, dll).
+     * @returns {number} Nomor pin default.
+     */
+    getDefaultPin(kind) {
+        return this.defaultPins[kind] ?? 0;
+    }
     getInfo() {
         return {
-            id: 'pins',
-            name: 'Pins',
+            id: this.extensionId,
+            name: this.extensionName,
             color1: '#D84315',
             color2: '#BF360C',
             color3: '#8E2400',
@@ -69,7 +115,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalOutputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('digital')
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -90,7 +136,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'pwmPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('pwm')
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -110,7 +156,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'analogOutputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('analogWrite')
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -130,7 +176,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'servoPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('servo')
                         },
                         VALUE: {
                             type: ArgumentType.ANGLE,
@@ -150,7 +196,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalOutputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('buzzer')
                         },
                         NOTE: {
                             type: ArgumentType.NUMBER,
@@ -174,7 +220,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalInputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('digitalRead')
                         }
                     }
                 },
@@ -190,7 +236,7 @@ class RaceroPins {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'analogInputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('analogRead')
                         }
                     }
                 },
@@ -202,12 +248,12 @@ class RaceroPins {
                         TRIG: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalOutputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('trig')
                         },
                         ECHO: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalInputPinsMenu',
-                            defaultValue: 0
+                            defaultValue: this.getDefaultPin('echo')
                         }
                     }
                 },

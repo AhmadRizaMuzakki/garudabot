@@ -1060,6 +1060,11 @@ class Runtime extends EventEmitter {
             return this._convertSeparatorForRaceroBlocks(blockInfo);
         }
 
+        // Sub-judul kategori toolbox (contoh: "label:Motor")
+        if (typeof blockInfo === 'string' && blockInfo.startsWith('label:')) {
+            return this._convertLabelForRaceroBlocks(blockInfo);
+        }
+
         if (blockInfo.blockType === BlockType.BUTTON) {
             return this._convertButtonForRaceroBlocks(blockInfo);
         }
@@ -1229,6 +1234,23 @@ class Runtime extends EventEmitter {
         return {
             info: blockInfo,
             xml: '<sep gap="36"/>'
+        };
+    }
+
+    /**
+     * Membuat teks label (sub-judul) di dalam kategori toolbox.
+     * Format input: "label:Teks Judul"
+     * Contoh: "label:Motor" -> tampil sebagai sub-title "Motor"
+     *
+     * @param {string} blockInfo Label bertipe string dengan prefix "label:"
+     * @returns {ConvertedBlockInfo} Info label yang siap dipakai Racero Blocks
+     * @private
+     */
+    _convertLabelForRaceroBlocks (blockInfo) {
+        const text = xmlEscape(blockInfo.slice('label:'.length).trim());
+        return {
+            info: blockInfo,
+            xml: `<label text="${text}"></label>`
         };
     }
 

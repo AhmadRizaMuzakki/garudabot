@@ -35,10 +35,16 @@ const vmManagerHOC = function (WrappedComponent) {
                 this.props.vm.initialized = true;
                 this.props.vm.setLocale(this.props.locale, this.props.messages);
 
-                if (!this.props.vm.extensionManager.isExtensionLoaded('pins')) {
-                    this.props.vm.extensionManager.loadExtensionIdSync('pins');
+                // Muat Pins terpisah: Uno dan ESP32 (bukan Pins generik)
+                if (!this.props.vm.extensionManager.isExtensionLoaded('pinsuno')) {
+                    this.props.vm.extensionManager.loadExtensionIdSync('pinsuno');
                 }
 
+                if (!this.props.vm.extensionManager.isExtensionLoaded('pinsesp32')) {
+                    this.props.vm.extensionManager.loadExtensionIdSync('pinsesp32');
+                }
+
+                // Catatan: robotesp32 tidak auto-load; ditambah lewat Extension Library
                 if (!this.props.vm.extensionManager.isExtensionLoaded('diplay')) {
                     this.props.vm.extensionManager.loadExtensionIdSync('display');
                 }
