@@ -7,6 +7,7 @@ const SET_INSTALLING = 'racero-gui/board/SET_INSTALLING';
 const SET_UPLOADING  = 'racero-gui/board/SET_UPLOADING';
 
 const SET_CONNECTED_DEVICES = 'racero-gui/board/SET_CONNECTED_DEVICES';
+const SET_OTA_PASSWORD = 'racero-gui/board/SET_OTA_PASSWORD';
 
 const initialState = {
     isSelecting: false,
@@ -17,7 +18,8 @@ const initialState = {
     isInstalling: false,
     isUploading: false,
 
-    connectedDevice: null
+    connectedDevice: null,
+    otaPassword: ''
 };
 
 const reducer = function (state, action) {
@@ -54,6 +56,10 @@ const reducer = function (state, action) {
         case SET_CONNECTED_DEVICES:
             return Object.assign({}, state, {
                 connectedDevice: action.details
+            });
+        case SET_OTA_PASSWORD:
+            return Object.assign({}, state, {
+                otaPassword: action.password
             });
         default:
             return state;
@@ -103,6 +109,13 @@ const setConnectionDetails = function (details) {
     };
 };
 
+const setOtaPassword = function (password) {
+    return {
+        type: SET_OTA_PASSWORD,
+        password: password
+    };
+};
+
 export {
     reducer as default,
     initialState as boardInitialState,
@@ -114,4 +127,5 @@ export {
     setInstallStatus,
     setUploadStatus,
     setConnectionDetails,
+    setOtaPassword,
 };

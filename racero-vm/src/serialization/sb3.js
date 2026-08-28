@@ -568,7 +568,7 @@ const serialize = function (runtime, targetId) {
         return serializedTargets[0];
     }
 
-    obj.board = runtime.boardConfig.name;
+    obj.board = runtime.boardConfig && runtime.boardConfig.name;
     obj.targets = serializedTargets;
 
     obj.monitors = serializeMonitors(runtime.getMonitorState());
@@ -1267,7 +1267,11 @@ const deserialize = function (json, runtime, zip, isSingleSprite) {
     }
 
     if (json.board) {
-        runtime.boardConfig.name = json.board;
+        if (!runtime.boardConfig) {
+            runtime.boardConfig = {name: json.board};
+        } else {
+            runtime.boardConfig.name = json.board;
+        }
     }
 
     // First keep track of the current target order in the json,

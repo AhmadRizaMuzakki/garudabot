@@ -530,7 +530,12 @@ class VirtualMachine extends EventEmitter {
         extensions.extensionIDs.forEach(extensionID => {
             if (!this.extensionManager.isExtensionLoaded(extensionID)) {
                 const extensionURL = extensions.extensionURLs.get(extensionID) || extensionID;
-                extensionPromises.push(this.extensionManager.loadExtensionURL(extensionURL));
+                extensionPromises.push(
+                    this.extensionManager.loadExtensionURL(extensionURL)
+                        .catch(err => {
+                            log.warn(`Could not load extension "${extensionID}" for this project:`, err);
+                        })
+                );
             }
         });
 
@@ -566,6 +571,7 @@ class VirtualMachine extends EventEmitter {
             this.emitWorkspaceUpdate();
             this.runtime.setEditingTarget(this.editingTarget);
             this.runtime.ioDevices.cloud.setStage(this.runtime.getTargetForStage());
+            return this.extensionManager.refreshBlocks();
         });
     }
 

@@ -2,6 +2,7 @@ import BoardFeature from './boards/BoardFeature';
 import PinCapability from './boards/PinCapability';
 
 import ArduinoUNO from './boards/ArduinoUNO';
+import ELFESP32Motor from './boards/ELFESP32Motor';
 import ESP32Wroom from './boards/ESP32Wroom';
 import HunaRobo2 from './boards/HunaRobo2';
 import MRT3 from './boards/MRT3';
@@ -10,6 +11,7 @@ import SmartCoding from './boards/SmartCoding';
 
 export const boards = {
     [ArduinoUNO.name]: ArduinoUNO,
+    [ELFESP32Motor.name]: ELFESP32Motor,
     [ESP32Wroom.name]: ESP32Wroom,
     [HunaRobo2.name]: HunaRobo2,
     [MRT3.name]: MRT3,

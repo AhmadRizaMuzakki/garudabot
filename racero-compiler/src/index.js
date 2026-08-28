@@ -750,15 +750,19 @@ bool isIRButtonPressed(uint32_t targetButton) {
         return `String(${value})`;
     }
 
-    /** Kontrol DC motor M1/M2 lewat pin arah + PWM default ESP32. */
+    /**
+     * Kontrol DC motor M1/M2 untuk ELF ESP32 (dual-PWM IN1/IN2).
+     */
     handleRobotEsp32DcMotor (block) {
         const motor = block.fields.MOTOR ? block.fields.MOTOR.value : 'M1';
         const speed = this.getInput(block, 'SPEED');
-        const dirPin = motor === 'M2' ? 18 : 5;
-        const pwmPin = motor === 'M2' ? 26 : 25;
-        this.setups.add(`pinMode(${dirPin}, OUTPUT);\n`);
-        this.setups.add(`pinMode(${pwmPin}, OUTPUT);\n`);
-        return `digitalWrite(${dirPin}, (${speed}) >= 0 ? HIGH : LOW);\nanalogWrite(${pwmPin}, abs((int)(${speed})));\n`;
+        const port = motor === 'M2' ? 'M2' : 'M1';
+        this.includes.add('#include <WeELFESP32Motor.h>');
+        this.globals.add(
+            `WeELFMotor weDcMotor${port}(WE_ELF_${port}_IN1, WE_ELF_${port}_IN2);\n`
+        );
+        this.setups.add(`weDcMotor${port}.begin();\n`);
+        return `weDcMotor${port}.run((int)(${speed}));\n`;
     }
 
     handleRobotEsp32DcMotor130 (block) {

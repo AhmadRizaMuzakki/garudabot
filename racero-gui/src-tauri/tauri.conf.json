@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Garudabot",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "identifier": "com.garudabot.garudabot",
   "build": {
     "frontendDist": "../build",
@@ -29,6 +29,9 @@
     "targets": "all",
     "externalBin": [
         "bin/arduino-cli"
+    ],
+    "resources": [
+        "arduino-libraries/**/*"
     ],
     "icon": [
       "icons/32x32.png",

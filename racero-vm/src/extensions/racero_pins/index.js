@@ -44,6 +44,13 @@ class RaceroPins {
 
         if (this.forcedBoardName) {
             this.boardName = this.forcedBoardName;
+            // Jangan timpa boardConfig kalau user sudah pilih board ESP32 lain
+            // (mis. ELF ESP32 Motor) — hanya set default saat belum ada.
+            if (!this.runtime.boardConfig) {
+                this.runtime.boardConfig = {name: this.boardName};
+            } else if (!/esp32/i.test(this.runtime.boardConfig.name || '')) {
+                this.runtime.boardConfig.name = this.boardName;
+            }
         } else if (this.runtime.boardConfig && this.runtime.boardConfig.name) {
             this.boardName = this.runtime.boardConfig.name;
         } else {

@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::time::Instant;
 use std::sync::{Arc, Mutex};
 
@@ -173,30 +174,35 @@ fn looks_like_ip_and_port(port: &str) -> bool {
     is_ipv4_address(host) && port_num.parse::<u16>().is_ok()
 }
 
-fn normalize_upload_port(port: &str, fqbn: &str) -> (String, Vec<String>) {
-    let mut extra_args = Vec::new();
+fn normalize_upload_port(port: &str, fqbn: &str, ota_password: &str) -> (String, Vec<String>) {
+    // ESP32 wireless OTA: IP saja + protocol network (bukan net:IP:8266 / ESP-01)
+    if fqbn.contains("esp32")
+        && (is_network_serial_port(port) || looks_like_ip_and_port(port) || is_ipv4_address(port))
+    {
+        let address = port.strip_prefix("net:").unwrap_or(port);
+        let host = address.split(':').next().unwrap_or(address);
+        return (
+            host.to_string(),
+            vec![
+                "--protocol".to_string(),
+                "network".to_string(),
+                "--discovery-timeout".to_string(),
+                "30s".to_string(),
+                "--upload-field".to_string(),
+                format!("password={}", ota_password),
+            ],
+        );
+    }
 
     if is_network_serial_port(port) {
-        extra_args.push("--upload-property".to_string());
-        extra_args.push("upload.speed=115200".to_string());
-        return (port.to_string(), extra_args);
+        return (port.to_string(), Vec::new());
     }
 
     if looks_like_ip_and_port(port) {
-        extra_args.push("--upload-property".to_string());
-        extra_args.push("upload.speed=115200".to_string());
-        return (format!("net:{}", port), extra_args);
+        return (format!("net:{}", port), Vec::new());
     }
 
-    if is_network_ota_port(port) && fqbn.contains("esp32") {
-        extra_args.push("--protocol".to_string());
-        extra_args.push("network".to_string());
-        extra_args.push("--discovery-timeout".to_string());
-        extra_args.push("30s".to_string());
-        return (port.to_string(), extra_args);
-    }
-
-    (port.to_string(), extra_args)
+    (port.to_string(), Vec::new())
 }
 
 async fn run_arduino_cli_with_logs(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
@@ -276,8 +282,68 @@ async fn board_install_esp01_bridge(app: AppHandle, port: String) -> Result<Stri
     }
 }
 
+fn arduino_libraries_dir(app: &AppHandle) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("arduino-libraries"));
+    if let Ok(res) = app.path().resource_dir() {
+        candidates.push(res.join("arduino-libraries"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("arduino-libraries"));
+            candidates.push(dir.join("src-tauri/arduino-libraries"));
+        }
+    }
+    candidates.push(PathBuf::from("arduino-libraries"));
+    candidates.into_iter().find(|p| p.is_dir())
+}
+
+fn append_arduino_libraries(app: &AppHandle, args: &mut Vec<String>) {
+    if let Some(dir) = arduino_libraries_dir(app) {
+        args.push("--libraries".to_string());
+        args.push(dir.to_string_lossy().into_owned());
+    }
+}
+
+fn escape_arduino_string(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('\"', "\\\"")
+}
+
+fn augment_esp32_ota_sketch(code: &str, ota_password: &str) -> String {
+    let mut sketch = code.to_string();
+
+    if !sketch.contains("#include <WiFi.h>") {
+        sketch = format!("#include <WiFi.h>\n{}", sketch);
+    }
+    if !sketch.contains("#include <ArduinoOTA.h>") {
+        sketch = format!("#include <ArduinoOTA.h>\n{}", sketch);
+    }
+
+    let escaped_password = escape_arduino_string(ota_password);
+    let setup_injection = format!(
+        "\n    WiFi.mode(WIFI_AP_STA);\n    WiFi.softAP(\"ELF-ESP32-Motor\", \"12345678\");\n    ArduinoOTA.setHostname(\"ELF-ESP32-Motor\");\n    ArduinoOTA.setPassword(\"{}\");\n    ArduinoOTA.begin();\n",
+        escaped_password
+    );
+
+    if !sketch.contains("ArduinoOTA.begin()") {
+        sketch = sketch.replacen("void setup() {", &format!("void setup() {{{}", setup_injection), 1);
+    }
+
+    if !sketch.contains("ArduinoOTA.handle()") {
+        sketch = sketch.replacen("void loop() {", "void loop() {\n    ArduinoOTA.handle();\n", 1);
+    }
+
+    sketch
+}
+
 #[tauri::command]
-async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, port: String) -> Result<String, String> {
+async fn board_compile_and_flash(
+    app: AppHandle,
+    code: String,
+    fqbn: String,
+    port: String,
+    ota_password: Option<String>,
+) -> Result<String, String> {
     let sketch_name = "racero_project";
 
     let mut sketch_dir = std::env::temp_dir();
@@ -287,9 +353,90 @@ async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, por
     }
 
     let sketch_file_path = sketch_dir.join(format!("{}.ino", sketch_name));
-    fs::write(&sketch_file_path, code).map_err(|e| format!("Arduino CLI: {}", e))?;
+    let is_esp32 = fqbn.contains("esp32");
+    let password_input = ota_password.unwrap_or_default();
+    let password = if is_esp32 {
+        let trimmed = password_input.trim();
+        if trimmed.is_empty() {
+            "admin".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        password_input
+    };
+    let sketch_code = if is_esp32 {
+        augment_esp32_ota_sketch(&code, &password)
+    } else {
+        code
+    };
+    fs::write(&sketch_file_path, sketch_code).map_err(|e| format!("Arduino CLI: {}", e))?;
 
-    let (upload_port, mut extra_args) = normalize_upload_port(&port, &fqbn);
+    let sketch_path = sketch_dir.to_str().unwrap().to_string();
+    let (upload_port, extra_args) = normalize_upload_port(&port, &fqbn, &password);
+    let is_esp32_ota = fqbn.contains("esp32") && is_ipv4_address(&upload_port);
+
+    if is_esp32_ota {
+        let _ = app.emit(
+            "compiler-log",
+            format!(
+                "Upload OTA ESP32 ke {} — pastikan PC join hotspot ESP32 (bukan jalur ESP-01).\n",
+                upload_port
+            ),
+        );
+
+        // compile --upload tidak mendukung --upload-field (password OTA).
+        // Compile dulu, lalu upload terpisah dengan password non-interaktif.
+        let build_path = sketch_dir.join("build");
+        let build_path_str = build_path.to_str().unwrap().to_string();
+
+        let mut compile_args = vec![
+            "compile".to_string(),
+            "--fqbn".to_string(),
+            fqbn.clone(),
+            "--build-path".to_string(),
+            build_path_str.clone(),
+        ];
+        append_arduino_libraries(&app, &mut compile_args);
+        compile_args.push(sketch_path.clone());
+        if fqbn == "racero:avr:32:hunaupload=enabled" {
+            compile_args.push("--build-property".to_string());
+            compile_args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
+        }
+
+        let compile_code = run_arduino_cli_with_logs(&app, compile_args).await?;
+        if compile_code != 0 {
+            return Err(format!("Compile gagal (exit code {}).", compile_code));
+        }
+
+        let _ = app.emit("compiler-log", "Compile OK. Mengirim OTA...\n");
+
+        let mut upload_args = vec![
+            "upload".to_string(),
+            "--fqbn".to_string(),
+            fqbn.clone(),
+            "--port".to_string(),
+            upload_port.clone(),
+            "--input-dir".to_string(),
+            build_path_str,
+        ];
+        upload_args.extend(extra_args);
+
+        let upload_code = run_arduino_cli_with_logs(&app, upload_args).await?;
+        if upload_code != 0 {
+            return Err(format!(
+                "Upload OTA gagal (exit code {}).\n\
+                 Tips OTA ESP32:\n\
+                 - PC join hotspot ESP32\n\
+                 - Firmware sudah aktifkan ArduinoOTA\n\
+                 - Isi Password OTA di Connect WiFi (firmware ELF biasanya admin / 12345678, bukan kosong)",
+                upload_code
+            ));
+        }
+
+        return Ok("Compilation cycle complete.".to_string());
+    }
+
     let mut args = vec![
         "compile".to_string(),
         "--upload".to_string(),
@@ -298,14 +445,15 @@ async fn board_compile_and_flash(app: AppHandle, code: String, fqbn: String, por
         "--port".to_string(),
         upload_port.clone(),
     ];
-    args.append(&mut extra_args);
+    args.extend(extra_args);
 
     if fqbn == "racero:avr:32:hunaupload=enabled" {
         args.push("--build-property".to_string());
         args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
     }
 
-    args.push(sketch_dir.to_str().unwrap().to_string());
+    append_arduino_libraries(&app, &mut args);
+    args.push(sketch_path);
 
     if is_network_serial_port(&upload_port) || looks_like_ip_and_port(&port) {
         let _ = app.emit(
