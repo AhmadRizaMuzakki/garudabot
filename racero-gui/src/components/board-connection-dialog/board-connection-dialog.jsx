@@ -44,11 +44,19 @@ const BoardConnectionDialogComponent = props => {
             <div className={styles.body}>
                 <div className={styles.wifiBlock}>
                     <div className={styles.sectionLabel}>
-                        <FormattedMessage
-                            defaultMessage="WiFi (Arduino + ESP-01)"
-                            description="WiFi section label"
-                            id="gui.boardConnection.wifiTitle"
-                        />
+                        {props.isEsp32 ? (
+                            <FormattedMessage
+                                defaultMessage="WiFi (ESP32 OTA)"
+                                description="WiFi section label for ESP32 OTA"
+                                id="gui.boardConnection.wifiTitleEsp32"
+                            />
+                        ) : (
+                            <FormattedMessage
+                                defaultMessage="WiFi (Arduino + ESP-01)"
+                                description="WiFi section label"
+                                id="gui.boardConnection.wifiTitle"
+                            />
+                        )}
                     </div>
                     <div className={styles.wifiRow}>
                         <input
@@ -59,15 +67,19 @@ const BoardConnectionDialogComponent = props => {
                             value={props.wifiIp}
                             onChange={e => props.onWifiIpChange(e.target.value)}
                         />
-                        <input
-                            className={styles.textInputPort}
-                            type="text"
-                            placeholder="8266"
-                            aria-label="Port"
-                            value={props.wifiPort}
-                            onChange={e => props.onWifiPortChange(e.target.value)}
-                        />
                     </div>
+                    {props.isEsp32 && (
+                        <div className={styles.wifiRow}>
+                            <input
+                                className={styles.textInput}
+                                type="text"
+                                placeholder="Password OTA (contoh: admin)"
+                                aria-label="Password OTA"
+                                value={props.otaPassword}
+                                onChange={e => props.onOtaPasswordChange(e.target.value)}
+                            />
+                        </div>
+                    )}
                     <button
                         type="button"
                         className={styles.boardButton}
@@ -76,93 +88,99 @@ const BoardConnectionDialogComponent = props => {
                     >
                         <FormattedMessage
                             defaultMessage="Connect WiFi"
-                            description="Connect to Arduino via ESP WiFi bridge"
+                            description="Connect via WiFi"
                             id="gui.boardConnection.connectWifi"
                         />
                     </button>
-                    <details className={styles.installDetails}>
-                        <summary className={styles.installSummary}>
-                            <FormattedMessage
-                                defaultMessage="Install ESP-01 bridge (USB-TTL)"
-                                description="ESP-01 firmware install summary"
-                                id="gui.boardConnection.installBridgeTitle"
-                            />
-                        </summary>
-                        <div className={styles.installBody}>
-                            <select
-                                className={styles.portSelect}
-                                value={props.selectedEspPort || ''}
-                                onChange={e => props.onEspPortChange(e.target.value)}
-                            >
-                                <option value="">
-                                    {intl.formatMessage({
-                                        id: 'gui.boardConnection.selectEspPort',
-                                        defaultMessage: 'Pilih port USB-TTL',
-                                        description: 'Placeholder for ESP USB port select'
-                                    })}
-                                </option>
-                                {props.ports.map(port => (
-                                    <option key={port.address} value={port.address}>
-                                        {formatPortLabel(port)}
+                    {props.showBridgeInstall && (
+                        <details className={styles.installDetails}>
+                            <summary className={styles.installSummary}>
+                                <FormattedMessage
+                                    defaultMessage="Install ESP-01 bridge (USB-TTL)"
+                                    description="ESP-01 firmware install summary"
+                                    id="gui.boardConnection.installBridgeTitle"
+                                />
+                            </summary>
+                            <div className={styles.installBody}>
+                                <select
+                                    className={styles.portSelect}
+                                    value={props.selectedEspPort || ''}
+                                    onChange={e => props.onEspPortChange(e.target.value)}
+                                >
+                                    <option value="">
+                                        {intl.formatMessage({
+                                            id: 'gui.boardConnection.selectEspPort',
+                                            defaultMessage: 'Pilih port USB-TTL',
+                                            description: 'Placeholder for ESP USB port select'
+                                        })}
                                     </option>
-                                ))}
-                            </select>
-                            <button
-                                type="button"
-                                className={styles.boardButton}
-                                onClick={props.onInstallBridge}
-                                disabled={!props.selectedEspPort || props.isInstallingBridge}
-                            >
-                                {props.isInstallingBridge ? (
-                                    <FormattedMessage
-                                        defaultMessage="Installing..."
-                                        description="ESP bridge install in progress"
-                                        id="gui.boardConnection.installingBridge"
-                                    />
-                                ) : (
-                                    <FormattedMessage
-                                        defaultMessage="Install Bridge"
-                                        description="Install ESP-01 bridge firmware button"
-                                        id="gui.boardConnection.installBridge"
-                                    />
-                                )}
-                            </button>
-                        </div>
-                    </details>
-                </div>
-
-                <div className={styles.sectionLabel}>
-                    <FormattedMessage
-                        defaultMessage="USB Serial"
-                        description="USB port section title"
-                        id="gui.boardConnection.usbTitle"
-                    />
-                </div>
-
-                <div className={styles.boardList}>
-                    {props.ports.length === 0 && (
-                        <div className={styles.statusText}>
-                            <FormattedMessage
-                                defaultMessage="No devices detected. Please plug in your device via USB."
-                                description="Board connection no devices."
-                                id="gui.boardConnection.noDevices"
-                            />
-                        </div>
+                                    {props.installPorts.map(port => (
+                                        <option key={port.address} value={port.address}>
+                                            {formatPortLabel(port)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    className={styles.boardButton}
+                                    onClick={props.onInstallBridge}
+                                    disabled={!props.selectedEspPort || props.isInstallingBridge}
+                                >
+                                    {props.isInstallingBridge ? (
+                                        <FormattedMessage
+                                            defaultMessage="Installing..."
+                                            description="ESP bridge install in progress"
+                                            id="gui.boardConnection.installingBridge"
+                                        />
+                                    ) : (
+                                        <FormattedMessage
+                                            defaultMessage="Install Bridge"
+                                            description="Install ESP-01 bridge firmware button"
+                                            id="gui.boardConnection.installBridge"
+                                        />
+                                    )}
+                                </button>
+                            </div>
+                        </details>
                     )}
-                    {props.ports.map(port => {
-                        const label = formatPortLabel(port);
-                        return (
-                            <button
-                                type="button"
-                                key={port.address || label}
-                                className={styles.boardButton}
-                                onClick={() => props.onConnect(port.address, label)}
-                            >
-                                {label}
-                            </button>
-                        );
-                    })}
                 </div>
+
+                {props.showUsbList && (
+                    <div className={styles.sectionLabel}>
+                        <FormattedMessage
+                            defaultMessage="USB Serial"
+                            description="USB port section title"
+                            id="gui.boardConnection.usbTitle"
+                        />
+                    </div>
+                )}
+
+                {props.showUsbList && (
+                    <div className={styles.boardList}>
+                        {props.ports.length === 0 && (
+                            <div className={styles.statusText}>
+                                <FormattedMessage
+                                    defaultMessage="No devices detected. Please plug in your device via USB."
+                                    description="Board connection no devices."
+                                    id="gui.boardConnection.noDevices"
+                                />
+                            </div>
+                        )}
+                        {props.ports.map(port => {
+                            const label = formatPortLabel(port);
+                            return (
+                                <button
+                                    type="button"
+                                    key={port.address || label}
+                                    className={styles.boardButton}
+                                    onClick={() => props.onConnect(port.address, label)}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         )}
         {props.connectionSuccess && (
@@ -185,6 +203,8 @@ const BoardConnectionDialogComponent = props => {
 
 BoardConnectionDialogComponent.propTypes = {
     connectionSuccess: PropTypes.string,
+    installPorts: PropTypes.arrayOf(PropTypes.object),
+    isEsp32: PropTypes.bool,
     isInstallingBridge: PropTypes.bool,
     isLoading: PropTypes.bool,
     onCancel: PropTypes.func.isRequired,
@@ -193,20 +213,26 @@ BoardConnectionDialogComponent.propTypes = {
     onEspPortChange: PropTypes.func,
     onInstallBridge: PropTypes.func,
     onWifiIpChange: PropTypes.func,
-    onWifiPortChange: PropTypes.func,
+    onOtaPasswordChange: PropTypes.func,
+    otaPassword: PropTypes.string,
     ports: PropTypes.arrayOf(PropTypes.object).isRequired,
     selectedEspPort: PropTypes.string,
-    wifiIp: PropTypes.string,
-    wifiPort: PropTypes.string
+    showBridgeInstall: PropTypes.bool,
+    showUsbList: PropTypes.bool,
+    wifiIp: PropTypes.string
 };
 
 BoardConnectionDialogComponent.defaultProps = {
     connectionSuccess: null,
+    installPorts: [],
+    isEsp32: false,
     isInstallingBridge: false,
     isLoading: false,
     selectedEspPort: '',
+    showBridgeInstall: true,
+    showUsbList: true,
     wifiIp: '192.168.4.1',
-    wifiPort: '8266'
+    otaPassword: 'admin'
 };
 
 export default injectIntl(BoardConnectionDialogComponent);

@@ -260,9 +260,10 @@ class RaceroRobotsEsp32 {
     dcMotor (args) {
         const motor = String(args.MOTOR);
         const speed = Number(args.SPEED);
+        // ELF ESP32 dual-PWM: IN1/IN2 (bukan DIR+PWM Mini)
         const map = {
-            M1: {dir: 5, pwm: 25},
-            M2: {dir: 18, pwm: 26}
+            M1: {dir: 22, pwm: 23},
+            M2: {dir: 19, pwm: 21}
         };
         const pins = map[motor] || map.M1;
         const direction = speed >= 0 ? 1 : 0;

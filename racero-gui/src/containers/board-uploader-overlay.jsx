@@ -72,10 +72,28 @@ class BoardUploaderOverlay extends React.Component {
             await tauri.core.invoke('board_disconnect');
             await new Promise(res => setTimeout(res, 500));
 
+            const boardName = (this.props.vm.runtime.boardConfig &&
+                this.props.vm.runtime.boardConfig.name) || 'Arduino Uno';
+            const board = boards[boardName];
+            if (!board || !board.fqbn) {
+                throw new Error(
+                    `Board "${boardName}" tidak dikenal. Pilih ulang board (mis. ELF ESP32 Motor).`
+                );
+            }
+            if (!this.props.connectedDevice) {
+                throw new Error('Belum Connect WiFi/USB. Sambungkan dulu sebelum upload.');
+            }
+
+            this.setState(prevState => ({
+                logs: prevState.logs +
+                    `Board aktif: ${boardName}\nFQBN: ${board.fqbn}\nTarget: ${this.props.connectedDevice}\n`
+            }));
+
             await tauri.core.invoke('board_compile_and_flash', {
                 code: cppCode,
-                fqbn: boards[this.props.vm.runtime.boardConfig.name].fqbn,
-                port: this.props.connectedDevice
+                fqbn: board.fqbn,
+                port: this.props.connectedDevice,
+                otaPassword: this.props.otaPassword || ''
             });
         } catch (error) {
             this.setState(prevState => ({
@@ -102,6 +120,7 @@ const mapStateToProps = state => {
     return {
         vm: state.raceroGui.vm,
         connectedDevice: state.raceroGui.board.connectedDevice,
+        otaPassword: state.raceroGui.board.otaPassword || '',
     };
 };
 

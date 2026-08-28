@@ -269,6 +269,14 @@ class Runtime extends EventEmitter {
         this._cloneCounter = 0;
 
         /**
+         * Board configuration persisted in project JSON (Garudabot extension).
+         * @type {{name: string}}
+         */
+        this.boardConfig = {
+            name: 'Arduino Uno'
+        };
+
+        /**
          * Flag to emit a targets update at the end of a step. When target data
          * changes, this flag is set to true.
          * @type {boolean}

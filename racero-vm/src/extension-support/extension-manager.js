@@ -4,6 +4,16 @@ const maybeFormatMessage = require('../util/maybe-format-message');
 
 const BlockType = require('./block-type');
 
+// Map legacy / alternate extension IDs saved in older projects to built-ins.
+const EXTENSION_ALIASES = {
+    racero_pins: 'pins',
+    racero_display: 'display',
+    racero_pins_uno: 'pinsuno',
+    racero_pins_esp32: 'pinsesp32'
+};
+
+const resolveExtensionId = extensionURL => EXTENSION_ALIASES[extensionURL] || extensionURL;
+
 // These extensions are currently built into the VM repository but should not be loaded at startup.
 // TODO: move these out into a separate repository?
 // TODO: change extension spec so that library info, including extension ID, can be collected through static methods
@@ -153,18 +163,19 @@ class ExtensionManager {
      * @returns {Promise} resolved once the extension is loaded and initialized or rejected on failure
      */
     loadExtensionURL (extensionURL) {
-        if (Object.prototype.hasOwnProperty.call(builtinExtensions, extensionURL)) {
+        const resolvedURL = resolveExtensionId(extensionURL);
+        if (Object.prototype.hasOwnProperty.call(builtinExtensions, resolvedURL)) {
             /** @TODO dupe handling for non-builtin extensions. See commit 670e51d33580e8a2e852b3b038bb3afc282f81b9 */
-            if (this.isExtensionLoaded(extensionURL)) {
-                const message = `Rejecting attempt to load a second extension with ID ${extensionURL}`;
+            if (this.isExtensionLoaded(resolvedURL)) {
+                const message = `Rejecting attempt to load a second extension with ID ${resolvedURL}`;
                 log.warn(message);
                 return Promise.resolve();
             }
 
-            const extension = builtinExtensions[extensionURL]();
+            const extension = builtinExtensions[resolvedURL]();
             const extensionInstance = new extension(this.runtime);
             const serviceName = this._registerInternalExtension(extensionInstance);
-            this._loadedExtensions.set(extensionURL, serviceName);
+            this._loadedExtensions.set(resolvedURL, serviceName);
             return Promise.resolve();
         }
 
