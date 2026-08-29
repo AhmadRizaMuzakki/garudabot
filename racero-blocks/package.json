@@ -12,6 +12,8 @@
   "main": "./dist/vertical.js",
   "browser": "./shim/vertical.js",
   "scripts": {
+    "build": "npm run translate && npm run build:core && webpack",
+    "build:core": "python3 build.py || python build.py",
     "deploy": "rimraf gh-pages/closure-library/scripts/ci/CloseAdobeDialog.exe && gh-pages -t -d gh-pages -m \"Build for $(git log --pretty=format:%H -n1) [skip ci]\"",
     "prepublish": "python2 build.py && webpack",
     "test": "npm run test:messages && npm run test:unit",
