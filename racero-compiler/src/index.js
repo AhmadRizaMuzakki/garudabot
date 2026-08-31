@@ -206,6 +206,19 @@ export class ArduinoCompiler {
         return this.traverseBlock(inputId);
     }
 
+    /**
+     * Menu yang memakai acceptReporters muncul sebagai input berisi blok menu,
+     * bukan field, sehingga membaca block.fields saja selalu jatuh ke nilai
+     * bawaan. Helper ini mencoba field lebih dulu lalu input menunya.
+     */
+    getMenuValue(block, name, fallback) {
+        if (block.fields && block.fields[name] && block.fields[name].value !== undefined) {
+            return block.fields[name].value;
+        }
+        const fromInput = this.getInput(block, name);
+        return fromInput === '' ? fallback : fromInput;
+    }
+
     traverseBlock(blockId, isSetup = false) {
         if (!blockId) return '';
 
@@ -754,15 +767,15 @@ bool isIRButtonPressed(uint32_t targetButton) {
      * Kontrol DC motor M1/M2 untuk ELF ESP32 (dual-PWM IN1/IN2).
      */
     handleRobotEsp32DcMotor (block) {
-        const motor = block.fields.MOTOR ? block.fields.MOTOR.value : 'M1';
+        const motor = this.getMenuValue(block, 'MOTOR', 'M1');
         const speed = this.getInput(block, 'SPEED');
-        const port = motor === 'M2' ? 'M2' : 'M1';
+        const port = String(motor).trim() === 'M2' ? 'M2' : 'M1';
         this.includes.add('#include <WeELFESP32Motor.h>');
         this.globals.add(
             `WeELFMotor weDcMotor${port}(WE_ELF_${port}_IN1, WE_ELF_${port}_IN2);\n`
         );
         this.setups.add(`weDcMotor${port}.begin();\n`);
-        return `weDcMotor${port}.run((int)(${speed}));\n`;
+        return `weDcMotor${port}.runPercent((int)(${speed}));\n`;
     }
 
     handleRobotEsp32DcMotor130 (block) {
@@ -799,14 +812,14 @@ bool isIRButtonPressed(uint32_t targetButton) {
 
     handleRobotEsp32BuzzerNoteBeat (block) {
         const pin = this.getInput(block, 'PIN');
-        const note = block.fields.NOTE ? block.fields.NOTE.value : 262;
-        const beat = block.fields.BEAT ? block.fields.BEAT.value : 500;
+        const note = this.getMenuValue(block, 'NOTE', 262);
+        const beat = this.getMenuValue(block, 'BEAT', 500);
         return `tone(${pin}, ${note}, ${beat});\n`;
     }
 
     handleRobotEsp32BuzzerNoteSecond (block) {
         const pin = this.getInput(block, 'PIN');
-        const note = block.fields.NOTE ? block.fields.NOTE.value : 262;
+        const note = this.getMenuValue(block, 'NOTE', 262);
         const second = this.getInput(block, 'SECOND');
         return `tone(${pin}, ${note}, (int)((${second}) * 1000));\n`;
     }
@@ -859,7 +872,7 @@ float robotEsp32Ultrasonic(int trig, int echo) {
 
     handleRobotEsp32DigitalWrite (block) {
         const pin = this.getInput(block, 'PIN');
-        const value = block.fields.VALUE && block.fields.VALUE.value ? block.fields.VALUE.value : 'LOW';
+        const value = this.getMenuValue(block, 'VALUE', 'LOW');
         this.setups.add(`pinMode(${pin}, OUTPUT);\n`);
         return `digitalWrite(${pin}, ${value});\n`;
     }
