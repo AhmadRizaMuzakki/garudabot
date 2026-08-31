@@ -305,6 +305,21 @@ fn append_arduino_libraries(app: &AppHandle, args: &mut Vec<String>) {
     }
 }
 
+/// Baud 921600 (bawaan core esp32) gagal pada sebagian kabel/USB-serial dengan
+/// pesan "Unable to verify flash chip connection", jadi upload USB dipaksa 115200.
+fn fqbn_with_safe_upload_speed(fqbn: &str) -> String {
+    if !fqbn.contains("esp32") || fqbn.contains("UploadSpeed=") {
+        return fqbn.to_string();
+    }
+
+    let has_options = fqbn.matches(':').count() >= 3;
+    if has_options {
+        format!("{},UploadSpeed=115200", fqbn)
+    } else {
+        format!("{}:UploadSpeed=115200", fqbn)
+    }
+}
+
 fn escape_arduino_string(input: &str) -> String {
     input.replace('\\', "\\\\").replace('\"', "\\\"")
 }
@@ -441,7 +456,7 @@ async fn board_compile_and_flash(
         "compile".to_string(),
         "--upload".to_string(),
         "--fqbn".to_string(),
-        fqbn.clone(),
+        fqbn_with_safe_upload_speed(&fqbn),
         "--port".to_string(),
         upload_port.clone(),
     ];

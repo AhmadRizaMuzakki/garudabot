@@ -256,20 +256,23 @@ class RaceroRobotsEsp32 {
 
     // --- Motor ---
 
-    /** Kontrol DC motor M1/M2 (pin arah + PWM). */
+    /** Kontrol DC motor M1/M2 (dual-PWM IN1/IN2, harus sama dengan WeELFESP32Motor.h). */
     dcMotor (args) {
         const motor = String(args.MOTOR);
         const speed = Number(args.SPEED);
-        // ELF ESP32 dual-PWM: IN1/IN2 (bukan DIR+PWM Mini)
         const map = {
-            M1: {dir: 22, pwm: 23},
-            M2: {dir: 19, pwm: 21}
+            M1: {in1: 21, in2: 19},
+            M2: {in1: 17, in2: 16}
         };
         const pins = map[motor] || map.M1;
-        const direction = speed >= 0 ? 1 : 0;
-        const pwm = Math.max(0, Math.min(255, Math.abs(Math.trunc(speed))));
-        return this._invoke('pin_digital_write', {pin: pins.dir, value: direction})
-            .then(() => this._invoke('pin_pwm_write', {pin: pins.pwm, value: pwm}));
+        // Nilai blok berskala persen, sedangkan pin_pwm_write memakai duty 0..255.
+        const percent = Math.max(0, Math.min(100, Math.abs(Math.trunc(speed))));
+        const pwm = Math.round((percent * 255) / 100);
+        // Pin yang tidak dipakai harus ditarik ke 0 lebih dulu supaya H-bridge
+        // tidak sempat mendapat dua sisi aktif saat arah berubah.
+        const [active, idle] = speed >= 0 ? [pins.in1, pins.in2] : [pins.in2, pins.in1];
+        return this._invoke('pin_pwm_write', {pin: idle, value: 0})
+            .then(() => this._invoke('pin_pwm_write', {pin: active, value: pwm}));
     }
 
     dcMotor130 (args) {
