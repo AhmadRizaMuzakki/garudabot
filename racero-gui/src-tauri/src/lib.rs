@@ -1,6 +1,5 @@
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
 use std::time::Instant;
 use std::sync::{Arc, Mutex};
 
@@ -9,6 +8,20 @@ use firmata_rs::{Board, Firmata};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::{ShellExt, process::{CommandEvent, CommandChild}};
+
+mod arduino_cli;
+mod ble_ota; // Upload program ESP32 lewat Bluetooth (compile + inject + payload OTA)
+mod ble_scratch_link; // Bridge opsional Scratch Link dari Rust
+
+/// Hotspot firmware bridge ESP-01, dipakai board non-ESP32 (Arduino + ESP-01).
+/// Nilainya harus sama dengan AP_SSID/AP_PASS/BRIDGE_PORT di
+/// firmware/Esp01ArduinoBridge.ino.
+const BRIDGE_AP_SSID_PREFIX: &str = "Garudabot";
+const BRIDGE_AP_PASSWORD: &str = "12345678";
+const BRIDGE_PORT: &str = "8266";
+
+/// Gateway softAP bawaan ESP8266 (Arduino + ESP-01 bridge).
+const AP_GATEWAY_IP: &str = "192.168.4.1";
 
 struct DisplayState {
     address: u8,
@@ -163,10 +176,6 @@ fn is_network_serial_port(port: &str) -> bool {
     port.starts_with("net:")
 }
 
-fn is_network_ota_port(port: &str) -> bool {
-    is_ipv4_address(port)
-}
-
 fn looks_like_ip_and_port(port: &str) -> bool {
     let Some((host, port_num)) = port.rsplit_once(':') else {
         return false;
@@ -206,36 +215,267 @@ fn normalize_upload_port(port: &str, fqbn: &str, ota_password: &str) -> (String,
 }
 
 async fn run_arduino_cli_with_logs(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
-    let sidecar = app.shell()
-        .sidecar("arduino-cli")
-        .map_err(|e| format!("Arduino CLI: {}", e))?;
+    arduino_cli::run_with_logs(app, args).await
+}
 
-    let mut exit_code = 0;
-    let (mut rx, _child) = sidecar
+/// netsh dipanggil langsung (bukan lewat sidecar) karena ia bagian dari Windows.
+/// CREATE_NO_WINDOW mencegah jendela konsol berkedip di depan pengguna.
+#[cfg(windows)]
+fn run_netsh(args: &[&str]) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let output = std::process::Command::new("netsh")
         .args(args)
-        .spawn()
-        .map_err(|e| format!("Arduino CLI: {}", e))?;
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("WIFI: gagal menjalankan netsh: {}", e))?;
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes).to_string();
-                let _ = app.emit("compiler-log", line);
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(not(windows))]
+fn run_netsh(_args: &[&str]) -> Result<String, String> {
+    Err("WIFI: pairing otomatis baru tersedia di Windows.".to_string())
+}
+
+/// Ambil nilai setelah ':' dari baris berlabel SSID, mengabaikan baris BSSID.
+/// Label "SSID"/"BSSID" tidak diterjemahkan oleh netsh, jadi aman dipakai
+/// sebagai penanda meski bahasa Windows bukan Inggris.
+fn netsh_ssid_value(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("SSID") {
+        return None;
+    }
+
+    let value = trimmed.split_once(':')?.1.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn parse_netsh_networks(output: &str) -> Vec<(String, Option<u8>)> {
+    let mut networks: Vec<(String, Option<u8>)> = Vec::new();
+
+    for line in output.lines() {
+        if let Some(ssid) = netsh_ssid_value(line) {
+            if !networks.iter().any(|(name, _)| *name == ssid) {
+                networks.push((ssid, None));
             }
-            CommandEvent::Stderr(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes).to_string();
-                let _ = app.emit("compiler-log", line);
+            continue;
+        }
+
+        // Baris kekuatan sinyal satu-satunya yang memuat '%', labelnya bisa
+        // terlokalisasi ("Signal"/"Sinyal") jadi yang dipakai adalah '%'.
+        if let Some(percent_pos) = line.find('%') {
+            let digits: String = line[..percent_pos]
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+
+            if digits.is_empty() {
+                continue;
             }
-            CommandEvent::Terminated(payload) => {
-                exit_code = payload.code.unwrap_or(-1);
-                let status = format!("\nProcess finished with code: {:?}", payload.code);
-                let _ = app.emit("compiler-log", status);
+
+            let signal = digits.chars().rev().collect::<String>().parse::<u8>().ok();
+            if let Some(last) = networks.last_mut() {
+                if last.1.is_none() {
+                    last.1 = signal;
+                }
             }
-            _ => {}
         }
     }
 
-    Ok(exit_code)
+    networks
+}
+
+fn current_wifi_ssid() -> Option<String> {
+    let output = run_netsh(&["wlan", "show", "interfaces"]).ok()?;
+    output.lines().find_map(netsh_ssid_value)
+}
+
+fn xml_escape(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn wlan_profile_xml(ssid: &str, password: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{ssid}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>{ssid}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>manual</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>{password}</keyMaterial>
+            </sharedKey>
+        </security>
+    </MSM>
+</WLANProfile>
+"#,
+        ssid = xml_escape(ssid),
+        password = xml_escape(password)
+    )
+}
+
+/// Profil hotspot per jenis papan. ESP32 dipairing untuk OTA (butuh password
+/// OTA), sedangkan ESP-01 bridge dipairing untuk upload serial lewat TCP
+/// (butuh nomor port).
+struct ApProfile {
+    prefix: &'static str,
+    password: &'static str,
+    port: Option<&'static str>,
+    ota_password: Option<&'static str>,
+}
+
+fn ap_profile(kind: &str) -> ApProfile {
+    if kind == "bridge" {
+        ApProfile {
+            prefix: BRIDGE_AP_SSID_PREFIX,
+            password: BRIDGE_AP_PASSWORD,
+            port: Some(BRIDGE_PORT),
+            ota_password: None,
+        }
+    } else {
+        // ESP32 SoftAP/OTA diganti BLE + Scratch Link; scan WiFi ESP32 tidak dipakai.
+        ApProfile {
+            prefix: "___esp32-softap-disabled",
+            password: BRIDGE_AP_PASSWORD,
+            port: None,
+            ota_password: None,
+        }
+    }
+}
+
+fn is_board_ssid(ssid: &str, prefix: &str) -> bool {
+    ssid.to_uppercase().starts_with(&prefix.to_uppercase())
+}
+
+#[tauri::command]
+async fn wifi_scan_boards(kind: Option<String>) -> Result<String, String> {
+    let kind = kind.unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = ap_profile(&kind);
+        let output = run_netsh(&["wlan", "show", "networks", "mode=bssid"])?;
+        let current = current_wifi_ssid();
+
+        let boards: Vec<serde_json::Value> = parse_netsh_networks(&output)
+            .into_iter()
+            .filter(|(ssid, _)| is_board_ssid(ssid, profile.prefix))
+            .map(|(ssid, signal)| {
+                let connected = current.as_deref() == Some(ssid.as_str());
+                serde_json::json!({
+                    "ssid": ssid,
+                    "signal": signal,
+                    "connected": connected
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "boards": boards,
+            "current_ssid": current,
+            "ip": AP_GATEWAY_IP,
+            "port": profile.port,
+            "ota_password": profile.ota_password
+        })
+        .to_string())
+    })
+    .await
+    .map_err(|e| format!("WIFI: scan gagal dijalankan: {}", e))?
+}
+
+#[tauri::command]
+async fn wifi_connect_board(ssid: String, kind: Option<String>) -> Result<String, String> {
+    let ssid = ssid.trim().to_string();
+    if ssid.is_empty() {
+        return Err("WIFI: nama hotspot kosong.".to_string());
+    }
+
+    let kind = kind.unwrap_or_default();
+    let profile = ap_profile(&kind);
+
+    // Pairing hanya untuk hotspot board, supaya tombol ini tidak bisa dipakai
+    // memindahkan koneksi WiFi pengguna ke jaringan sembarangan.
+    if !is_board_ssid(&ssid, profile.prefix) {
+        return Err(format!(
+            "WIFI: '{}' bukan hotspot board (harus diawali {}).",
+            ssid, profile.prefix
+        ));
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        if current_wifi_ssid().as_deref() == Some(ssid.as_str()) {
+            return Ok(serde_json::json!({
+                "ssid": ssid,
+                "ip": AP_GATEWAY_IP,
+                "port": profile.port,
+                "ota_password": profile.ota_password,
+                "already_connected": true
+            })
+            .to_string());
+        }
+
+        let profile_path = std::env::temp_dir().join("garudabot-wlan-profile.xml");
+        fs::write(&profile_path, wlan_profile_xml(&ssid, profile.password))
+            .map_err(|e| format!("WIFI: gagal menulis profil WLAN: {}", e))?;
+
+        let add_result = run_netsh(&[
+            "wlan",
+            "add",
+            "profile",
+            &format!("filename={}", profile_path.to_string_lossy()),
+            "user=current",
+        ])?;
+        let _ = fs::remove_file(&profile_path);
+
+        run_netsh(&["wlan", "connect", &format!("name={}", ssid), &format!("ssid={}", ssid)])
+            .map_err(|e| format!("{} (profil: {})", e, add_result.trim()))?;
+
+        // netsh connect hanya memicu; penyambungan selesai beberapa detik kemudian.
+        let deadline = Instant::now();
+        while deadline.elapsed().as_secs() < 20 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if current_wifi_ssid().as_deref() == Some(ssid.as_str()) {
+                return Ok(serde_json::json!({
+                    "ssid": ssid,
+                    "ip": AP_GATEWAY_IP,
+                    "port": profile.port,
+                    "ota_password": profile.ota_password,
+                    "already_connected": false
+                })
+                .to_string());
+            }
+        }
+
+        Err(format!(
+            "WIFI: gagal menyambung ke {} dalam 20 detik. Pastikan board menyala dan sudah pernah di-upload lewat USB.",
+            ssid
+        ))
+    })
+    .await
+    .map_err(|e| format!("WIFI: pairing gagal dijalankan: {}", e))?
 }
 
 #[tauri::command]
@@ -282,73 +522,12 @@ async fn board_install_esp01_bridge(app: AppHandle, port: String) -> Result<Stri
     }
 }
 
-fn arduino_libraries_dir(app: &AppHandle) -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("arduino-libraries"));
-    if let Ok(res) = app.path().resource_dir() {
-        candidates.push(res.join("arduino-libraries"));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("arduino-libraries"));
-            candidates.push(dir.join("src-tauri/arduino-libraries"));
-        }
-    }
-    candidates.push(PathBuf::from("arduino-libraries"));
-    candidates.into_iter().find(|p| p.is_dir())
-}
-
 fn append_arduino_libraries(app: &AppHandle, args: &mut Vec<String>) {
-    if let Some(dir) = arduino_libraries_dir(app) {
-        args.push("--libraries".to_string());
-        args.push(dir.to_string_lossy().into_owned());
-    }
+    arduino_cli::append_libraries(app, args);
 }
 
-/// Baud 921600 (bawaan core esp32) gagal pada sebagian kabel/USB-serial dengan
-/// pesan "Unable to verify flash chip connection", jadi upload USB dipaksa 115200.
 fn fqbn_with_safe_upload_speed(fqbn: &str) -> String {
-    if !fqbn.contains("esp32") || fqbn.contains("UploadSpeed=") {
-        return fqbn.to_string();
-    }
-
-    let has_options = fqbn.matches(':').count() >= 3;
-    if has_options {
-        format!("{},UploadSpeed=115200", fqbn)
-    } else {
-        format!("{}:UploadSpeed=115200", fqbn)
-    }
-}
-
-fn escape_arduino_string(input: &str) -> String {
-    input.replace('\\', "\\\\").replace('\"', "\\\"")
-}
-
-fn augment_esp32_ota_sketch(code: &str, ota_password: &str) -> String {
-    let mut sketch = code.to_string();
-
-    if !sketch.contains("#include <WiFi.h>") {
-        sketch = format!("#include <WiFi.h>\n{}", sketch);
-    }
-    if !sketch.contains("#include <ArduinoOTA.h>") {
-        sketch = format!("#include <ArduinoOTA.h>\n{}", sketch);
-    }
-
-    let escaped_password = escape_arduino_string(ota_password);
-    let setup_injection = format!(
-        "\n    WiFi.mode(WIFI_AP_STA);\n    WiFi.softAP(\"ELF-ESP32-Motor\", \"12345678\");\n    ArduinoOTA.setHostname(\"ELF-ESP32-Motor\");\n    ArduinoOTA.setPassword(\"{}\");\n    ArduinoOTA.begin();\n",
-        escaped_password
-    );
-
-    if !sketch.contains("ArduinoOTA.begin()") {
-        sketch = sketch.replacen("void setup() {", &format!("void setup() {{{}", setup_injection), 1);
-    }
-
-    if !sketch.contains("ArduinoOTA.handle()") {
-        sketch = sketch.replacen("void loop() {", "void loop() {\n    ArduinoOTA.handle();\n", 1);
-    }
-
-    sketch
+    arduino_cli::fqbn_with_safe_upload_speed(fqbn)
 }
 
 #[tauri::command]
@@ -369,87 +548,73 @@ async fn board_compile_and_flash(
 
     let sketch_file_path = sketch_dir.join(format!("{}.ino", sketch_name));
     let is_esp32 = fqbn.contains("esp32");
+    // Upload wireless ESP32: target `ble:<id>` (Bluetooth + Scratch Link), bukan WiFi SoftAP.
+    let is_ble_ota = ble_ota::is_ble_port(&port);
+
+    if is_esp32
+        && !is_ble_ota
+        && (is_network_serial_port(&port) || looks_like_ip_and_port(&port) || is_ipv4_address(&port))
+    {
+        return Err(
+            "ESP32 wireless upload sekarang lewat BLE (Scratch Link), bukan WiFi SoftAP.\n\
+             Connect ke perangkat BLE, atau pakai USB COM."
+                .to_string(),
+        );
+    }
+
     let password_input = ota_password.unwrap_or_default();
-    let password = if is_esp32 {
-        let trimmed = password_input.trim();
-        if trimmed.is_empty() {
-            "admin".to_string()
-        } else {
-            trimmed.to_string()
-        }
-    } else {
-        password_input
-    };
+    // Setiap compile ESP32 (USB maupun BLE) menyertakan GarudabotBleOta agar board
+    // tetap bisa di-discover / di-OTA ulang setelah flash.
     let sketch_code = if is_esp32 {
-        augment_esp32_ota_sketch(&code, &password)
+        let _ = app.emit(
+            "compiler-log",
+            "ESP32: menyuntikkan GarudabotBleOta (upload BLE / USB).\n",
+        );
+        let injected = ble_ota::inject_ble_ota_support(&code);
+        let ok = injected.contains("GarudabotBleOta::begin()");
+        let _ = app.emit(
+            "compiler-log",
+            if ok {
+                "BLE OTA inject OK — board akan advertise sebagai \"Garudabot\".\n\
+                 Partition ESP32: min_spiffs (1.9MB APP) agar muat BLE + library motor.\n"
+                    .to_string()
+            } else {
+                "PERINGATAN: inject BLE gagal (setup() tidak ditemukan). BLE mungkin tidak aktif.\n"
+                    .to_string()
+            },
+        );
+        injected
     } else {
         code
     };
     fs::write(&sketch_file_path, sketch_code).map_err(|e| format!("Arduino CLI: {}", e))?;
 
     let sketch_path = sketch_dir.to_str().unwrap().to_string();
-    let (upload_port, extra_args) = normalize_upload_port(&port, &fqbn, &password);
-    let is_esp32_ota = fqbn.contains("esp32") && is_ipv4_address(&upload_port);
 
-    if is_esp32_ota {
-        let _ = app.emit(
-            "compiler-log",
-            format!(
-                "Upload OTA ESP32 ke {} — pastikan PC join hotspot ESP32 (bukan jalur ESP-01).\n",
-                upload_port
-            ),
+    // Cabang Bluetooth: compile → JSON firmware; frontend kirim lewat Scratch Link.
+    // Cabang USB: lanjut arduino-cli upload seperti biasa di bawah.
+    if is_ble_ota {
+        if !is_esp32 {
+            return Err("Upload BLE hanya untuk board ESP32.".to_string());
+        }
+        let peripheral_id = ble_ota::peripheral_id_from_port(&port)?;
+        return ble_ota::prepare_ble_ota_payload(
+            &app,
+            sketch_path,
+            &sketch_dir,
+            &fqbn,
+            &peripheral_id,
+        )
+        .await;
+    }
+
+    let (upload_port, extra_args) = normalize_upload_port(&port, &fqbn, &password_input);
+
+    if fqbn.contains("esp32") && is_ipv4_address(&upload_port) {
+        return Err(
+            "Upload OTA WiFi ESP32 sudah diganti ke BLE. Sambungkan BLE atau USB."
+                .to_string(),
         );
-
-        // compile --upload tidak mendukung --upload-field (password OTA).
-        // Compile dulu, lalu upload terpisah dengan password non-interaktif.
-        let build_path = sketch_dir.join("build");
-        let build_path_str = build_path.to_str().unwrap().to_string();
-
-        let mut compile_args = vec![
-            "compile".to_string(),
-            "--fqbn".to_string(),
-            fqbn.clone(),
-            "--build-path".to_string(),
-            build_path_str.clone(),
-        ];
-        append_arduino_libraries(&app, &mut compile_args);
-        compile_args.push(sketch_path.clone());
-        if fqbn == "racero:avr:32:hunaupload=enabled" {
-            compile_args.push("--build-property".to_string());
-            compile_args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
-        }
-
-        let compile_code = run_arduino_cli_with_logs(&app, compile_args).await?;
-        if compile_code != 0 {
-            return Err(format!("Compile gagal (exit code {}).", compile_code));
-        }
-
-        let _ = app.emit("compiler-log", "Compile OK. Mengirim OTA...\n");
-
-        let mut upload_args = vec![
-            "upload".to_string(),
-            "--fqbn".to_string(),
-            fqbn.clone(),
-            "--port".to_string(),
-            upload_port.clone(),
-            "--input-dir".to_string(),
-            build_path_str,
-        ];
-        upload_args.extend(extra_args);
-
-        let upload_code = run_arduino_cli_with_logs(&app, upload_args).await?;
-        if upload_code != 0 {
-            return Err(format!(
-                "Upload OTA gagal (exit code {}).\n\
-                 Tips OTA ESP32:\n\
-                 - PC join hotspot ESP32\n\
-                 - Firmware sudah aktifkan ArduinoOTA\n\
-                 - Isi Password OTA di Connect WiFi (firmware ELF biasanya admin / 12345678, bukan kosong)",
-                upload_code
-            ));
-        }
-
-        return Ok("Compilation cycle complete.".to_string());
     }
 
     let mut args = vec![
@@ -489,8 +654,6 @@ async fn board_compile_and_flash(
              - Cek IP ESP (biasanya 192.168.4.1) dan port bridge (8266 atau 23)\n\
              - GPIO2 ESP harus ke RESET Arduino lewat kapasitor 100nF\n\
              - Flash firmware bridge ke ESP-01 sekali via USB-TTL 3.3V"
-        } else if is_network_ota_port(&upload_port) {
-            "\nTips OTA ESP32: PC harus satu jaringan dengan ESP32 dan firmware sudah ada ArduinoOTA."
         } else {
             ""
         };
@@ -929,6 +1092,7 @@ pub fn run() {
             display: Mutex::new(None),
             watcher_child: Mutex::new(None)
         })
+        .manage(ble_scratch_link::ScratchLinkBleState::default())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
@@ -998,6 +1162,8 @@ pub fn run() {
             board_disconnect,
             board_install_esp01_bridge,
             board_compile_and_flash,
+            wifi_scan_boards,
+            wifi_connect_board,
             pin_digital_write,
             pin_pwm_write,
             pin_analog_write,
@@ -1013,7 +1179,12 @@ pub fn run() {
             i2c_clear_display,
             i2c_write_string,
             file_write,
-            app_quit
+            app_quit,
+            ble_scratch_link::ble_link_scan,
+            ble_scratch_link::ble_link_connect,
+            ble_scratch_link::ble_link_start_notifications,
+            ble_scratch_link::ble_link_write,
+            ble_scratch_link::ble_link_close
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

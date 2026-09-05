@@ -31,3 +31,6 @@ tauri-plugin-fs = "2"
 
 firmata-rs = "0.4.3"
 serialport = "4.3.0"
+base64 = "0.22"
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
+url = "2"

@@ -2,7 +2,13 @@ import React from 'react';
 import { connect } from 'react-redux';
 import { boards } from 'racero-boards';
 import BoardUploaderOverlayComponent from '../components/board-uploader-overlay/board-uploader-overlay.jsx';
+import Esp32BleLink from '../lib/ble/esp32-ble-link.js';
 
+/**
+ * Overlay compile/upload.
+ * - USB (COMx): Rust flash lewat arduino-cli.
+ * - Bluetooth (`ble:<id>`): Rust compile + inject → frontend kirim .bin lewat Scratch Link.
+ */
 class BoardUploaderOverlay extends React.Component {
     constructor(props) {
         super(props);
@@ -17,6 +23,7 @@ class BoardUploaderOverlay extends React.Component {
         };
 
         this.unlisten = null;
+        this.bleLink = null;
     }
 
     componentDidMount() {
@@ -38,6 +45,10 @@ class BoardUploaderOverlay extends React.Component {
     }
 
     async componentWillUnmount() {
+        if (this.bleLink) {
+            this.bleLink.close();
+            this.bleLink = null;
+        }
         if (this.unlisten) {
             const unsubscribe = await this.unlisten;
             if (typeof unsubscribe === 'function') {
@@ -45,8 +56,14 @@ class BoardUploaderOverlay extends React.Component {
             } else if (typeof this.unlisten === 'function') {
                 this.unlisten();
             }
+        }
     }
-    }
+
+    appendLog = line => {
+        this.setState(prevState => ({
+            logs: prevState.logs + line + (line.endsWith('\n') ? '' : '\n')
+        }));
+    };
 
     startCompilation = async () => {
         const tauri = window.__TAURI__;
@@ -56,6 +73,10 @@ class BoardUploaderOverlay extends React.Component {
             await this.unlisten();
             this.unlisten = null;
         }
+        if (this.bleLink) {
+            this.bleLink.close();
+            this.bleLink = null;
+        }
 
         const { cppCode } = this.props;
         try {
@@ -64,7 +85,8 @@ class BoardUploaderOverlay extends React.Component {
                     logs: prevState.logs + event.payload + '\n'
                 }));
 
-                if (event.payload.includes('Process finished')) {
+                if (event.payload.includes('Process finished') &&
+                    !(this.props.connectedDevice || '').startsWith('ble:')) {
                     this.setState({ isCompiling: false });
                 }
             });
@@ -81,25 +103,98 @@ class BoardUploaderOverlay extends React.Component {
                 );
             }
             if (!this.props.connectedDevice) {
-                throw new Error('Belum Connect WiFi/USB. Sambungkan dulu sebelum upload.');
+                throw new Error('Belum Connect USB/BLE. Sambungkan dulu sebelum upload.');
             }
 
-            this.setState(prevState => ({
-                logs: prevState.logs +
-                    `Board aktif: ${boardName}\nFQBN: ${board.fqbn}\nTarget: ${this.props.connectedDevice}\n`
-            }));
+            this.appendLog(
+                `Board aktif: ${boardName}\nFQBN: ${board.fqbn}\nTarget: ${this.props.connectedDevice}\n`
+            );
 
-            await tauri.core.invoke('board_compile_and_flash', {
+            const result = await tauri.core.invoke('board_compile_and_flash', {
                 code: cppCode,
                 fqbn: board.fqbn,
                 port: this.props.connectedDevice,
                 otaPassword: this.props.otaPassword || ''
             });
+
+            if (typeof result === 'string' && result.trim().startsWith('{')) {
+                const payload = JSON.parse(result);
+                if (payload.mode === 'ble-ota') {
+                    await this.runBleOta(payload);
+                    this.setState({ isCompiling: false });
+                    return;
+                }
+            }
+
+            this.setState({ isCompiling: false });
         } catch (error) {
             this.setState(prevState => ({
                 logs: prevState.logs + '\nSYSTEM ERROR: ' + error + '\n',
                 isCompiling: false
             }));
+        }
+    };
+
+    /**
+     * Lanjutan upload Bluetooth: terima payload JSON dari Rust, lalu OTA via Scratch Link.
+     * (Compile sudah selesai di backend; di sini hanya transfer firmware.)
+     */
+    runBleOta = async payload => {
+        const peripheralId = payload.peripheralId;
+        const size = payload.size || 0;
+        const sizeKb = Math.round(size / 1024);
+        this.appendLog(`BLE OTA: ${sizeKb} KB → ${peripheralId}\n`);
+
+        if (this.bleLink) {
+            try {
+                await this.bleLink.closeAsync();
+            } catch (e) { /* ignore */ }
+            this.bleLink = null;
+        }
+
+        let lastPct = 0;
+        const link = new Esp32BleLink({
+            onNotify: msg => {
+                const text = String(msg || '');
+                if (text.startsWith('N:')) return;
+                if (text === 'ACK:BEGIN') {
+                    this.appendLog('OTA mulai…\n');
+                    return;
+                }
+                if (text === 'OK') return;
+                if (text.startsWith('ERR') || text.startsWith('RDY')) {
+                    this.appendLog(`[BLE] ${text}\n`);
+                }
+            },
+            onError: err => {
+                this.appendLog(`[BLE] ${err}\n`);
+            }
+        });
+        this.bleLink = link;
+
+        try {
+            await link.uploadOta(peripheralId, payload.firmwareBase64, {
+                onStatus: () => {},
+                onProgress: (sent, total) => {
+                    if (!total) return;
+                    const pct = sent >= total ? 100 : Math.floor((sent / total) * 100);
+                    const step = pct === 100 ? 100 : Math.floor(pct / 10) * 10;
+                    if (step <= lastPct) return;
+                    lastPct = step;
+                    this.appendLog(`OTA ${step}%\n`);
+                }
+            });
+            this.appendLog('Selesai. ESP32 restart — Connect BLE lagi sebentar.\n');
+            this.setState({ isCompiling: false });
+        } catch (error) {
+            this.appendLog(`\nBLE OTA gagal: ${error}\n`);
+            this.appendLog('Cek Scratch Link + board menyala, lalu Connect BLE ulang.\n');
+            this.setState({ isCompiling: false });
+        } finally {
+            if (this.bleLink) {
+                this.bleLink.close();
+                this.bleLink = null;
+            }
         }
     };
 
