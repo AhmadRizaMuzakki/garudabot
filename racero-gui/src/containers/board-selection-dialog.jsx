@@ -47,7 +47,7 @@ class BoardSelectionDialog extends React.Component {
             vm.runtime.requestBlocksUpdate();
         }
 
-        // Ganti board ESP32 ↔ Arduino: reset target koneksi lama (net:8266 vs IP OTA).
+        // Ganti board ESP32 ↔ Arduino: reset target koneksi lama.
         this.props.onSetConnectionDetails(null);
 
         this.props.onSetSelecting(false);
