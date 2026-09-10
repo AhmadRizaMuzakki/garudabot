@@ -3,21 +3,31 @@ import bindAll from 'lodash.bindall';
 import React from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
-import { setConnectingStatus, setConnectionDetails, setInstallStatus, setOtaPassword } from '../reducers/board';
+import { injectIntl, intlShape } from 'react-intl';
+import {
+    setConnectingStatus,
+    setConnectionDetails,
+    setBleDeviceName
+} from '../reducers/board';
 import { boards } from 'racero-boards';
 import Esp32BleLink from '../lib/ble/esp32-ble-link.js';
+import {
+    DEFAULT_BLE_DEVICE_NAME,
+    saveBleDeviceName,
+    importBleNameCsv,
+    loadStoredBatch,
+    saveStoredBatch,
+    clearStoredBatch,
+    loadLastFlashedBleName
+} from '../lib/ble/ble-device-name.js';
 
 import BoardConnectionDialogComponent from '../components/board-connection-dialog/board-connection-dialog.jsx';
 
 // Dialog Connect: ESP32 memakai daftar BLE (Scratch Link) + USB cadangan.
+// Board lain: USB Serial saja.
 // Setelah pilih Garudabot, target tersimpan sebagai `ble:<peripheralId>` untuk upload.
 
-const DEFAULT_WIFI_IP = '192.168.4.1';
-const DEFAULT_OTA_PASSWORD = 'admin';
-
 const isNetworkAddress = value => value.startsWith('net:') || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(value);
-
-const stripNetPrefix = address => address.replace(/^net:/, '').split(':')[0];
 
 const normalizePorts = data => {
     const rawPorts = (data && (data.detected_ports || data.ports)) || [];
@@ -38,36 +48,53 @@ class BoardConnectionDialog extends React.Component {
         bindAll(this, [
             'handleConnect',
             'handleCancel',
-            'handleInstallBridge',
-            'handleEspPortChange',
-            'handleScanWifi',
-            'handlePairBoard',
-            'handleConnectDiscovered',
             'handleScanBle',
-            'handlePairBle'
+            'handlePairBle',
+            'handleBleNameModeChange',
+            'handleBleNameDraftChange',
+            'handleBleNameSave',
+            'handleBleNameImport',
+            'handleBleBatchNext',
+            'handleBleBatchSkip',
+            'handleBleBatchClear',
+            'handleBleUseBatchCurrent'
         ]);
+        const storedBatch = loadStoredBatch();
         this.state = {
             ports: [],
             isLoading: false,
-            otaPassword: DEFAULT_OTA_PASSWORD,
             selectedEspPort: '',
-            isInstallingBridge: false,
             connectionSuccess: null,
-            wifiBoards: [],
-            currentSsid: null,
-            isScanningWifi: false,
-            pairingSsid: null,
-            wifiScanError: null,
             bleDevices: [],
             isScanningBle: false,
             pairingBleId: null,
-            bleScanError: null
+            bleScanError: null,
+            bleNameMode: storedBatch.names.length ? 'batch' : 'manual',
+            bleNameDraft: props.bleDeviceName || DEFAULT_BLE_DEVICE_NAME,
+            bleNameError: null,
+            bleBatchNames: storedBatch.names,
+            bleBatchIndex: storedBatch.index,
+            bleBatchFileName: '',
+            bleBatchErrors: [],
+            lastFlashedBleName: loadLastFlashedBleName()
         };
         this.connectionSuccessTimer = null;
         this.isUnmounted = false;
         this.bleLink = null;
     }
     componentDidMount() {
+        // Sinkron ulang antrian + nama flash terakhir (bisa berubah setelah Upload).
+        const storedBatch = loadStoredBatch();
+        this.setState({
+            bleBatchNames: storedBatch.names,
+            bleBatchIndex: storedBatch.index,
+            lastFlashedBleName: loadLastFlashedBleName(),
+            bleNameMode: storedBatch.names.length ? 'batch' : this.state.bleNameMode
+        });
+        if (storedBatch.names.length && storedBatch.index < storedBatch.names.length) {
+            this.applyBleName(storedBatch.names[storedBatch.index]);
+        }
+
         const tauri = window.__TAURI__;
         if (!tauri) return;
 
@@ -89,8 +116,6 @@ class BoardConnectionDialog extends React.Component {
 
         if (this.isEsp32Board()) {
             this.handleScanBle();
-        } else {
-            this.handleScanWifi();
         }
     }
     componentWillUnmount() {
@@ -152,46 +177,11 @@ class BoardConnectionDialog extends React.Component {
         const board = boards[boardName];
         return Boolean(board && board.fqbn && /esp32/i.test(board.fqbn));
     }
-    pairingKind () {
-        return this.isEsp32Board() ? 'esp32' : 'bridge';
-    }
-    resolveUsbUploadPort () {
-        const serialPorts = this.state.ports.filter(port => !isNetworkAddress(port.address || ''));
-        if (this.state.selectedEspPort &&
-            serialPorts.some(port => port.address === this.state.selectedEspPort)) {
-            return this.state.selectedEspPort;
-        }
-        if (serialPorts.length === 1) {
-            return serialPorts[0].address;
-        }
-        return null;
-    }
     handleConnect (port, label) {
         if (this.isEsp32Board()) {
             this.setState({ selectedEspPort: port });
         }
         this.showConnectionSuccess(label || port, port);
-    }
-    handleScanWifi () {
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-
-        this.setState({ isScanningWifi: true, wifiScanError: null });
-        tauri.core.invoke('wifi_scan_boards', { kind: this.pairingKind() }).then(resultString => {
-            if (this.isUnmounted) return;
-            const data = JSON.parse(resultString);
-            this.setState({
-                wifiBoards: data.boards || [],
-                currentSsid: data.current_ssid || null,
-                isScanningWifi: false
-            });
-        }).catch(err => {
-            if (this.isUnmounted) return;
-            this.setState({
-                isScanningWifi: false,
-                wifiScanError: String(err)
-            });
-        });
     }
     handleScanBle () {
         const prev = this.bleLink;
@@ -233,9 +223,13 @@ class BoardConnectionDialog extends React.Component {
                     this.setState({
                         isScanningBle: false,
                         bleDevices: [],
-                        bleScanError:
-                            'Scratch Link tidak menemukan Garudabot. Quit Scratch Link → buka lagi. ' +
-                            'Pastikan board menyala (nRF Connect melihat Garudabot), lalu Cari lagi.'
+                        bleScanError: this.props.intl.formatMessage({
+                            id: 'gui.boardConnection.bleScanNotFound',
+                            defaultMessage:
+                                'Scratch Link found no board. Quit Scratch Link → open again. ' +
+                                'Make sure the board is on, then Search again.',
+                            description: 'BLE scan found nothing'
+                        })
                     });
                     return;
                 }
@@ -258,7 +252,11 @@ class BoardConnectionDialog extends React.Component {
     handlePairBle (device) {
         if (!device || !device.peripheralId) return;
         if (!this.bleLink) {
-            window.alert('Scan BLE dulu (butuh Scratch Link).');
+            window.alert(this.props.intl.formatMessage({
+                id: 'gui.boardConnection.bleScanFirst',
+                defaultMessage: 'Search BLE first (Scratch Link required).',
+                description: 'Alert when pairing without scan'
+            }));
             return;
         }
 
@@ -268,7 +266,6 @@ class BoardConnectionDialog extends React.Component {
             const label = device.name || device.peripheralId;
             this.setState({ pairingBleId: null });
             // Simpan target upload Bluetooth: ble:<peripheralId>
-            // (bukan COMx USB, bukan IP SoftAP WiFi lama).
             this.showConnectionSuccess(label, `ble:${device.peripheralId}`);
             // Lepas sesi Scratch Link — saat upload, OTA discover+connect di sesi baru.
             this.teardownBleLink();
@@ -278,73 +275,89 @@ class BoardConnectionDialog extends React.Component {
             window.alert(String(err && err.message ? err.message : err));
         });
     }
-    handlePairBoard (ssid) {
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-
-        this.setState({ pairingSsid: ssid });
-        tauri.core.invoke('wifi_connect_board', {
-            ssid,
-            kind: this.pairingKind()
-        }).then(resultString => {
+    applyBleName (name) {
+        const saved = saveBleDeviceName(name);
+        if (!saved.ok) {
+            this.setState({ bleNameError: saved.error, bleNameDraft: saved.name });
+            return false;
+        }
+        this.props.onSetBleDeviceName(saved.name);
+        this.setState({
+            bleNameDraft: saved.name,
+            bleNameError: null
+        });
+        return true;
+    }
+    handleBleNameModeChange (mode) {
+        this.setState({ bleNameMode: mode, bleNameError: null });
+    }
+    handleBleNameDraftChange (value) {
+        this.setState({ bleNameDraft: value, bleNameError: null });
+    }
+    handleBleNameSave () {
+        this.applyBleName(this.state.bleNameDraft);
+    }
+    handleBleNameImport () {
+        importBleNameCsv().then(result => {
             if (this.isUnmounted) return;
-            const data = JSON.parse(resultString);
-            const ip = data.ip || DEFAULT_WIFI_IP;
-
-            this.setState({
-                pairingSsid: null,
-                currentSsid: data.ssid || ssid
-            });
-
-            // Bridge ESP-01 diakses sebagai serial-over-TCP, jadi target
-            // koneksinya net:<ip>:<port>; ESP32 OTA cukup IP-nya saja.
-            if (data.port) {
-                this.showConnectionSuccess(ssid, `net:${ip}:${data.port}`);
+            if (!result.names.length) {
+                this.setState({
+                    bleBatchErrors: result.errors.length ?
+                        result.errors :
+                        ['Tidak ada nama valid di file.'],
+                    bleBatchFileName: result.fileName || ''
+                });
                 return;
             }
-
-            const password = data.ota_password || DEFAULT_OTA_PASSWORD;
-            this.setState({ otaPassword: password });
-            this.props.onSetOtaPassword(password);
-            this.showConnectionSuccess(ssid, ip);
+            saveStoredBatch(result.names, 0);
+            this.setState({
+                bleNameMode: 'batch',
+                bleBatchNames: result.names,
+                bleBatchIndex: 0,
+                bleBatchFileName: result.fileName || '',
+                bleBatchErrors: result.errors || []
+            });
+            this.applyBleName(result.names[0]);
         }).catch(err => {
             if (this.isUnmounted) return;
-            this.setState({ pairingSsid: null });
-            window.alert(String(err));
+            this.setState({
+                bleBatchErrors: [String(err && err.message ? err.message : err)]
+            });
         });
     }
-    handleConnectDiscovered (address, label) {
-        const ip = stripNetPrefix(address);
-        if (this.isEsp32Board()) {
-            this.props.onSetOtaPassword(this.state.otaPassword);
-            this.showConnectionSuccess(label || ip, ip);
-            return;
+    advanceBatch (skip) {
+        const {bleBatchNames, bleBatchIndex} = this.state;
+        if (!bleBatchNames.length) return;
+        const next = Math.min(bleBatchIndex + 1, bleBatchNames.length);
+        saveStoredBatch(bleBatchNames, next);
+        this.setState({ bleBatchIndex: next });
+        if (next < bleBatchNames.length) {
+            this.applyBleName(bleBatchNames[next]);
         }
-        this.showConnectionSuccess(label || address, address);
+        if (skip) {
+            // no-op beyond advance; kept for clarity / future analytics
+        }
     }
-    handleInstallBridge () {
-        const tauri = window.__TAURI__;
-        if (!tauri || !this.state.selectedEspPort) return;
-        if (isNetworkAddress(this.state.selectedEspPort)) {
-            window.alert('Install ESP-01 bridge harus via USB-TTL (COM), bukan IP/WiFi.');
-            return;
-        }
-
-        this.setState({ isInstallingBridge: true });
-        this.props.onSetInstalling(true);
-        tauri.core.invoke('board_install_esp01_bridge', {
-            port: this.state.selectedEspPort
-        }).then(msg => {
-            window.alert(msg);
-        }).catch(err => {
-            window.alert(String(err));
-        }).finally(() => {
-            this.setState({ isInstallingBridge: false });
-            this.props.onSetInstalling(false);
+    handleBleBatchNext () {
+        this.advanceBatch(false);
+    }
+    handleBleBatchSkip () {
+        this.advanceBatch(true);
+    }
+    handleBleBatchClear () {
+        clearStoredBatch();
+        this.setState({
+            bleBatchNames: [],
+            bleBatchIndex: 0,
+            bleBatchFileName: '',
+            bleBatchErrors: [],
+            bleNameMode: 'manual'
         });
     }
-    handleEspPortChange (value) {
-        this.setState({ selectedEspPort: value });
+    handleBleUseBatchCurrent () {
+        const {bleBatchNames, bleBatchIndex} = this.state;
+        if (!bleBatchNames.length || bleBatchIndex >= bleBatchNames.length) return;
+        this.applyBleName(bleBatchNames[bleBatchIndex]);
     }
     handleCancel() {
         this.teardownBleLink();
@@ -357,64 +370,64 @@ class BoardConnectionDialog extends React.Component {
         }
         const isEsp32 = this.isEsp32Board();
         const serialPorts = this.state.ports.filter(port => !isNetworkAddress(port.address || ''));
-        // Entri bertipe network berasal dari mDNS arduino-cli: board yang sudah
-        // menjalankan ArduinoOTA dan berada di jaringan yang sama.
-        const networkPorts = this.state.ports.filter(port => isNetworkAddress(port.address || ''));
 
         return (
             <BoardConnectionDialogComponent
                 ports={serialPorts}
-                installPorts={serialPorts}
-                networkPorts={networkPorts}
-                showBridgeInstall={!isEsp32}
                 showUsbList
                 isEsp32={isEsp32}
                 isLoading={this.state.isLoading}
                 connectionSuccess={this.state.connectionSuccess}
-                selectedEspPort={this.state.selectedEspPort}
-                isInstallingBridge={this.state.isInstallingBridge}
-                wifiBoards={this.state.wifiBoards}
-                currentSsid={this.state.currentSsid}
-                isScanningWifi={this.state.isScanningWifi}
-                pairingSsid={this.state.pairingSsid}
-                wifiScanError={this.state.wifiScanError}
                 bleDevices={this.state.bleDevices}
                 isScanningBle={this.state.isScanningBle}
                 pairingBleId={this.state.pairingBleId}
                 bleScanError={this.state.bleScanError}
+                bleDeviceName={this.props.bleDeviceName}
+                bleNameMode={this.state.bleNameMode}
+                bleNameDraft={this.state.bleNameDraft}
+                bleNameError={this.state.bleNameError}
+                bleBatchNames={this.state.bleBatchNames}
+                bleBatchIndex={this.state.bleBatchIndex}
+                bleBatchFileName={this.state.bleBatchFileName}
+                bleBatchErrors={this.state.bleBatchErrors}
+                lastFlashedBleName={this.state.lastFlashedBleName}
                 onCancel={this.handleCancel}
                 onConnect={this.handleConnect}
-                onInstallBridge={this.handleInstallBridge}
-                onEspPortChange={this.handleEspPortChange}
-                onScanWifi={this.handleScanWifi}
-                onPairBoard={this.handlePairBoard}
-                onConnectDiscovered={this.handleConnectDiscovered}
                 onScanBle={this.handleScanBle}
                 onPairBle={this.handlePairBle}
+                onBleNameModeChange={this.handleBleNameModeChange}
+                onBleNameDraftChange={this.handleBleNameDraftChange}
+                onBleNameSave={this.handleBleNameSave}
+                onBleNameImport={this.handleBleNameImport}
+                onBleBatchNext={this.handleBleBatchNext}
+                onBleBatchSkip={this.handleBleBatchSkip}
+                onBleBatchClear={this.handleBleBatchClear}
+                onBleUseBatchCurrent={this.handleBleUseBatchCurrent}
             />
         );
     }
 }
 
 BoardConnectionDialog.propTypes = {
+    bleDeviceName: PropTypes.string,
+    intl: intlShape.isRequired,
     isConnecting: PropTypes.bool,
+    onSetBleDeviceName: PropTypes.func,
     onSetConnecting: PropTypes.func,
     onSetConnectionDetails: PropTypes.func,
-    onSetInstalling: PropTypes.func,
-    onSetOtaPassword: PropTypes.func,
     vm: PropTypes.object
 };
 
 const mapStateToProps = state => ({
     vm: state.raceroGui.vm,
     isConnecting: state.raceroGui.board.isConnecting,
+    bleDeviceName: state.raceroGui.board.bleDeviceName
 });
 
 const mapDispatchToProps = dispatch => ({
     onSetConnecting: connecting => dispatch(setConnectingStatus(connecting)),
     onSetConnectionDetails: details => dispatch(setConnectionDetails(details)),
-    onSetInstalling: installing => dispatch(setInstallStatus(installing)),
-    onSetOtaPassword: password => dispatch(setOtaPassword(password))
+    onSetBleDeviceName: name => dispatch(setBleDeviceName(name))
 });
 
-export default connect(mapStateToProps, mapDispatchToProps)(BoardConnectionDialog);
+export default injectIntl(connect(mapStateToProps, mapDispatchToProps)(BoardConnectionDialog));

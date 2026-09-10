@@ -3,13 +3,14 @@
 
 #include <Arduino.h>
 
-// Penerima firmware OTA lewat Bluetooth (Nordic UART service).
-// Disisipkan otomatis ke sketch ESP32 oleh Garudabot (ble_ota.rs) agar
-// upload program bisa lewat Scratch Link setelah flash USB pertama.
+// Penerima firmware OTA lewat Bluetooth (Nordic UART).
+// App menyisipkan otomatis ke sketch ESP32 lewat ble_ota.rs, contoh:
+//   GarudabotBleOta::begin("Mobil-01");  // nama advertising BLE
+//   GarudabotBleOta::loop();
 // Protokol harus cocok dengan racero-gui/src/lib/ble/protocol.js
 
 namespace GarudabotBleOta {
-    // Nama pendek agar muat di advertising packet BLE.
+    // Default jika begin() dipanggil tanpa argumen.
     static const char *DEVICE_NAME = "Garudabot";
     static const char *SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
     static const char *RX_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"; // central → ESP32 (firmware)

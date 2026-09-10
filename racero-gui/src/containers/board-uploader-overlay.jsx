@@ -3,6 +3,11 @@ import { connect } from 'react-redux';
 import { boards } from 'racero-boards';
 import BoardUploaderOverlayComponent from '../components/board-uploader-overlay/board-uploader-overlay.jsx';
 import Esp32BleLink from '../lib/ble/esp32-ble-link.js';
+import {
+    saveLastFlashedBleName,
+    loadStoredBatch,
+    saveStoredBatch
+} from '../lib/ble/ble-device-name.js';
 
 /**
  * Overlay compile/upload.
@@ -107,25 +112,32 @@ class BoardUploaderOverlay extends React.Component {
             }
 
             this.appendLog(
-                `Board aktif: ${boardName}\nFQBN: ${board.fqbn}\nTarget: ${this.props.connectedDevice}\n`
+                `Board aktif: ${boardName}\nFQBN: ${board.fqbn}\nTarget: ${this.props.connectedDevice}\n` +
+                `Nama BLE untuk inject: ${this.props.bleDeviceName || 'Garudabot'}\n`
             );
 
+            const bleName = this.props.bleDeviceName || 'Garudabot';
             const result = await tauri.core.invoke('board_compile_and_flash', {
                 code: cppCode,
                 fqbn: board.fqbn,
                 port: this.props.connectedDevice,
-                otaPassword: this.props.otaPassword || ''
+                otaPassword: this.props.otaPassword || '',
+                bleDeviceName: bleName
             });
 
             if (typeof result === 'string' && result.trim().startsWith('{')) {
                 const payload = JSON.parse(result);
                 if (payload.mode === 'ble-ota') {
-                    await this.runBleOta(payload);
-                    this.setState({ isCompiling: false });
+                    await this.runBleOta(payload, bleName);
                     return;
                 }
             }
 
+            this.markBleNameFlashed(bleName);
+            this.appendLog(
+                `\nUpload selesai. Nama BLE: "${bleName}".\n` +
+                'Di Windows daftar Connect bisa tetap ESP32-xxxx (cek nRF Connect di HP).\n'
+            );
             this.setState({ isCompiling: false });
         } catch (error) {
             this.setState(prevState => ({
@@ -135,11 +147,25 @@ class BoardUploaderOverlay extends React.Component {
         }
     };
 
+    markBleNameFlashed = bleName => {
+        // Ingat nama yang baru masuk firmware (untuk label daftar BLE).
+        saveLastFlashedBleName(bleName);
+        // Majukan antrian Excel ke baris berikutnya jika nama cocok.
+        const batch = loadStoredBatch();
+        if (batch.names && batch.names.length && batch.index < batch.names.length) {
+            const current = batch.names[batch.index];
+            if (current === bleName) {
+                const next = Math.min(batch.index + 1, batch.names.length);
+                saveStoredBatch(batch.names, next);
+            }
+        }
+    };
+
     /**
      * Lanjutan upload Bluetooth: terima payload JSON dari Rust, lalu OTA via Scratch Link.
      * (Compile sudah selesai di backend; di sini hanya transfer firmware.)
      */
-    runBleOta = async payload => {
+    runBleOta = async (payload, bleName) => {
         const peripheralId = payload.peripheralId;
         const size = payload.size || 0;
         const sizeKb = Math.round(size / 1024);
@@ -184,7 +210,11 @@ class BoardUploaderOverlay extends React.Component {
                     this.appendLog(`OTA ${step}%\n`);
                 }
             });
-            this.appendLog('Selesai. ESP32 restart — Connect BLE lagi sebentar.\n');
+            this.markBleNameFlashed(bleName || this.props.bleDeviceName || 'Garudabot');
+            this.appendLog(
+                `Selesai. Nama BLE di firmware: "${bleName || this.props.bleDeviceName}". ` +
+                'ESP32 restart — Connect BLE lagi sebentar.\n'
+            );
             this.setState({ isCompiling: false });
         } catch (error) {
             this.appendLog(`\nBLE OTA gagal: ${error}\n`);
@@ -216,6 +246,7 @@ const mapStateToProps = state => {
         vm: state.raceroGui.vm,
         connectedDevice: state.raceroGui.board.connectedDevice,
         otaPassword: state.raceroGui.board.otaPassword || '',
+        bleDeviceName: state.raceroGui.board.bleDeviceName || 'Garudabot'
     };
 };
 

@@ -7,7 +7,7 @@ $dialog-border: rgba(0, 0, 0, 0.12);
 $dialog-muted: $text-primary-transparent;
 
 .modalContent {
-    width: 400px;
+    width: 420px;
     max-width: calc(100vw - 2rem);
     background-color: $ui-white;
     border-color: $ui-black-transparent;
@@ -16,22 +16,107 @@ $dialog-muted: $text-primary-transparent;
     overflow: hidden;
 }
 
+.modalWide {
+    width: 780px;
+    max-width: calc(100vw - 1.5rem);
+}
+
 .body {
-    padding: 1rem 1.15rem 1.25rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    background-color: $ui-white;
+    color: $text-primary;
+    max-height: min(78vh, 640px);
+    overflow: hidden;
+}
+
+.bodySplit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    width: 100%;
+    min-height: 420px;
+    max-height: min(80vh, 620px);
+}
+
+.splitPane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.75rem 0.85rem 0.85rem;
+    background: $ui-white;
+}
+
+.splitPaneRight {
+    border-left: 1px solid $dialog-border;
+    background: $ui-secondary;
+}
+
+.splitPaneHeader {
+    flex: 0 0 auto;
+    margin: 0 0 0.35rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: $text-primary;
+}
+
+.stepHint {
+    flex: 0 0 auto;
+    margin: 0 0 0.55rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: $dialog-muted;
+}
+
+.splitPaneScroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    background-color: $ui-white;
-    color: $text-primary;
-    max-height: 70vh;
-    overflow-y: auto;
 }
 
-.wifiBlock,
-.pairBlock {
+.scrollArea {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.85rem 1.05rem 0.65rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.usbDock {
+    flex: 0 0 auto;
+    padding: 0.65rem 1.05rem 0.9rem;
+    border-top: 1px solid $dialog-border;
+    background: $ui-white;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.usbSection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding-top: 0;
+    border-top: none;
+}
+
+.wifiBlock {
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid $dialog-border;
+}
+
+.pairBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
 }
 
 .pairHeader {
@@ -50,10 +135,10 @@ $dialog-muted: $text-primary-transparent;
 }
 
 .usbSectionLabel {
-    margin: 0.35rem 0 0;
-    padding-top: 0.75rem;
-    border-top: 1px solid $dialog-border;
-    font-size: 0.95rem;
+    margin: 0;
+    padding-top: 0;
+    border-top: none;
+    font-size: 0.9rem;
     font-weight: 700;
     color: $text-primary;
     text-align: left;
@@ -68,6 +153,20 @@ $dialog-muted: $text-primary-transparent;
     background: $ui-secondary;
     border: 1px solid $dialog-border;
     border-radius: 0.4rem;
+}
+
+.activeNameBanner {
+    flex: 0 0 auto;
+    margin: 0 0 0.35rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: center;
+    color: $text-primary;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    border-radius: 0.45rem;
 }
 
 .scanButton {
@@ -93,13 +192,38 @@ $dialog-muted: $text-primary-transparent;
     cursor: not-allowed;
 }
 
-.boardList {
+.boardList,
+.usbBoardList {
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
     width: 100%;
-    max-height: 240px;
     overflow-y: auto;
+}
+
+.boardList {
+    max-height: 180px;
+}
+
+.usbBoardList {
+    max-height: 180px;
+}
+
+@media (max-width: 720px) {
+    .modalWide {
+        width: 420px;
+    }
+
+    .bodySplit {
+        grid-template-columns: 1fr;
+        min-height: 0;
+        max-height: min(82vh, 680px);
+    }
+
+    .splitPaneRight {
+        border-left: none;
+        border-top: 1px solid $dialog-border;
+    }
 }
 
 /* List item: board BLE / WiFi / USB COM — putih berborder (bukan CTA gelap) */
@@ -140,6 +264,36 @@ $dialog-muted: $text-primary-transparent;
     text-align: left;
 }
 
+.boardNameStack {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    text-align: left;
+}
+
+.boardNameSub {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: $dialog-muted;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.targetNameHint {
+    margin: 0;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: $text-primary;
+    background: rgba(76, 151, 255, 0.12);
+    border: 1px solid rgba(76, 151, 255, 0.3);
+    border-radius: 0.4rem;
+}
+
 .boardMeta {
     display: flex;
     align-items: center;
@@ -177,39 +331,39 @@ $dialog-muted: $text-primary-transparent;
 
 .statusText {
     margin: 0;
-    padding: 0.85rem 0.75rem;
-    font-size: 0.85rem;
+    padding: 0.65rem 0.6rem;
+    font-size: 0.8rem;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.35;
     color: $dialog-muted;
-    background: $ui-secondary;
-    border: 1px solid $dialog-border;
-    border-radius: 0.5rem;
+    background: $ui-white;
+    border: 1px dashed $dialog-border;
+    border-radius: 0.45rem;
 }
 
 .statusTextError {
     margin: 0;
-    padding: 0.85rem 0.75rem;
-    font-size: 0.85rem;
+    padding: 0.65rem 0.6rem;
+    font-size: 0.8rem;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.35;
     background: $error-transparent;
     border: 1px solid $error-light;
-    border-radius: 0.5rem;
+    border-radius: 0.45rem;
     color: $error-primary;
     font-weight: 600;
 }
 
 .statusTextScanning {
     margin: 0;
-    padding: 0.85rem 0.75rem;
-    font-size: 0.85rem;
+    padding: 0.65rem 0.6rem;
+    font-size: 0.8rem;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.35;
     color: $text-primary;
-    background: $ui-secondary;
+    background: $ui-white;
     border: 1px solid $dialog-border;
-    border-radius: 0.5rem;
+    border-radius: 0.45rem;
     animation: pulse 1.5s infinite;
 }
 

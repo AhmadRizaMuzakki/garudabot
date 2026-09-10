@@ -1,3 +1,8 @@
+import {
+    loadStoredBleDeviceName,
+    DEFAULT_BLE_DEVICE_NAME
+} from '../lib/ble/ble-device-name.js';
+
 const SET_SELECTING  = 'racero-gui/board/SET_SELECTING';
 const SET_SELECTED   = 'racero-gui/board/SET_SELECTED';
 const SET_CONNECTING = 'racero-gui/board/SET_CONNECTING';
@@ -8,6 +13,7 @@ const SET_UPLOADING  = 'racero-gui/board/SET_UPLOADING';
 
 const SET_CONNECTED_DEVICES = 'racero-gui/board/SET_CONNECTED_DEVICES';
 const SET_OTA_PASSWORD = 'racero-gui/board/SET_OTA_PASSWORD';
+const SET_BLE_DEVICE_NAME = 'racero-gui/board/SET_BLE_DEVICE_NAME';
 
 const initialState = {
     isSelecting: false,
@@ -19,7 +25,10 @@ const initialState = {
     isUploading: false,
 
     connectedDevice: null,
-    otaPassword: ''
+    otaPassword: '',
+    bleDeviceName: typeof localStorage !== 'undefined' ?
+        loadStoredBleDeviceName() :
+        DEFAULT_BLE_DEVICE_NAME
 };
 
 const reducer = function (state, action) {
@@ -60,6 +69,10 @@ const reducer = function (state, action) {
         case SET_OTA_PASSWORD:
             return Object.assign({}, state, {
                 otaPassword: action.password
+            });
+        case SET_BLE_DEVICE_NAME:
+            return Object.assign({}, state, {
+                bleDeviceName: action.name
             });
         default:
             return state;
@@ -116,6 +129,13 @@ const setOtaPassword = function (password) {
     };
 };
 
+const setBleDeviceName = function (name) {
+    return {
+        type: SET_BLE_DEVICE_NAME,
+        name: name
+    };
+};
+
 export {
     reducer as default,
     initialState as boardInitialState,
@@ -128,4 +148,5 @@ export {
     setUploadStatus,
     setConnectionDetails,
     setOtaPassword,
+    setBleDeviceName,
 };
