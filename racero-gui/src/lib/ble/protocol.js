@@ -34,11 +34,18 @@ export const DISCOVER_OPTIONS = {
     optionalServices: [GARUDABOT_BLE.serviceUuid]
 };
 
-/** Label untuk UI: Windows sering kirim name kosong. */
+/** Label fallback jika Scratch Link mengirim name kosong (sering di Windows). */
 export const peripheralDisplayName = peripheral => {
     const name = peripheral && peripheral.name ? String(peripheral.name).trim() : '';
     if (name) return name;
-    return GARUDABOT_BLE.deviceName;
+    const id = peripheral && peripheral.peripheralId != null ?
+        String(peripheral.peripheralId) :
+        '';
+    if (id) {
+        const short = id.length > 8 ? id.slice(-8) : id;
+        return `ESP32-${short}`;
+    }
+    return 'ESP32 BLE';
 };
 
 export const bytesToBase64 = bytes => {

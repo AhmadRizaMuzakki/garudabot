@@ -22,8 +22,10 @@ use tauri::{AppHandle, Emitter};
 use crate::arduino_cli;
 
 const INCLUDE_LINE: &str = "#include <GarudabotBleOta.h>";
-const SETUP_CALL: &str = "GarudabotBleOta::begin();";
+const SETUP_CALL_PREFIX: &str = "GarudabotBleOta::begin(";
 const LOOP_CALL: &str = "GarudabotBleOta::loop();";
+const DEFAULT_BLE_NAME: &str = "Garudabot";
+const BLE_NAME_MAX_LEN: usize = 15;
 
 /// Port virtual dari UI: `ble:<ScratchLink peripheralId>` (bukan COM / IP).
 pub(crate) fn is_ble_port(port: &str) -> bool {
@@ -38,11 +40,46 @@ pub(crate) fn peripheral_id_from_port(port: &str) -> Result<String, String> {
     Ok(id.to_string())
 }
 
-/// Sisipkan penerima OTA Bluetooth ke sketch hasil block compiler.
+/// Bersihkan nama agar aman sebagai string C di sketch (huruf/angka/-/_).
+pub(crate) fn sanitize_ble_device_name(raw: Option<&str>) -> String {
+    let candidate = raw.unwrap_or(DEFAULT_BLE_NAME).trim();
+    let name = if candidate.is_empty() {
+        DEFAULT_BLE_NAME
+    } else {
+        candidate
+    };
+
+    let mut out = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if out.len() >= BLE_NAME_MAX_LEN {
+            break;
+        }
+        let ok = ch.is_ascii_alphanumeric() || ((ch == '-' || ch == '_') && i > 0);
+        if ok {
+            out.push(ch);
+        }
+    }
+    if out.is_empty() {
+        DEFAULT_BLE_NAME.to_string()
+    } else {
+        out
+    }
+}
+
+/// Contoh hasil: `GarudabotBleOta::begin("Mobil-01");`
+fn setup_call_for_name(device_name: &str) -> String {
+    format!("GarudabotBleOta::begin(\"{}\");", device_name)
+}
+
+/// Sisipkan library OTA BLE ke sketch, dengan nama advertising custom.
 /// Tanpa ini board tidak advertise / tidak bisa di-upload ulang lewat BLE.
-pub(crate) fn inject_ble_ota_support(code: &str) -> String {
-    if code.contains(SETUP_CALL) {
-        return code.to_string();
+pub(crate) fn inject_ble_ota_support(code: &str, device_name: Option<&str>) -> String {
+    let ble_name = sanitize_ble_device_name(device_name);
+    let setup_call = setup_call_for_name(&ble_name);
+
+    // Sketch sudah punya begin(...) → ganti argumen namanya saja.
+    if code.contains(SETUP_CALL_PREFIX) {
+        return replace_begin_call(code, &setup_call);
     }
 
     let mut sketch = code.to_string();
@@ -50,14 +87,34 @@ pub(crate) fn inject_ble_ota_support(code: &str) -> String {
         sketch = format!("{}\n{}", INCLUDE_LINE, sketch);
     }
 
-    sketch = inject_call_into_arduino_fn(&sketch, "setup", SETUP_CALL);
+    sketch = inject_call_into_arduino_fn(&sketch, "setup", &setup_call);
     if !sketch.contains(LOOP_CALL) {
         sketch = inject_call_into_arduino_fn(&sketch, "loop", LOOP_CALL);
     }
     sketch
 }
 
-/// Sisipkan `call` tepat setelah `{` pembuka `void fn_name()` (tahan beautify/indent).
+/// Ganti pemanggilan `GarudabotBleOta::begin(...);` yang sudah ada.
+fn replace_begin_call(code: &str, setup_call: &str) -> String {
+    let bytes = code.as_bytes();
+    if let Some(start) = code.find(SETUP_CALL_PREFIX) {
+        let mut end = start + SETUP_CALL_PREFIX.len();
+        while end < bytes.len() && bytes[end] != b';' {
+            end += 1;
+        }
+        if end < bytes.len() {
+            end += 1; // sertakan ';'
+            let mut out = String::with_capacity(code.len() + setup_call.len());
+            out.push_str(&code[..start]);
+            out.push_str(setup_call);
+            out.push_str(&code[end..]);
+            return out;
+        }
+    }
+    code.to_string()
+}
+
+/// Sisipkan `call` tepat setelah `{` pembuka `void fn_name()`.
 fn inject_call_into_arduino_fn(sketch: &str, fn_name: &str, call: &str) -> String {
     let needle = format!("void {}()", fn_name);
     let Some(fn_pos) = sketch.find(&needle) else {

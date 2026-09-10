@@ -3,7 +3,11 @@ import { defineMessages, injectIntl, FormattedMessage } from 'react-intl';
 
 import PropTypes from 'prop-types';
 import Modal from '../modal/modal.jsx';
+import BleNameSection from './ble-name-section.jsx';
 import styles from './board-connection-dialog.css';
+import {
+    isGenericBleLabel
+} from '../../lib/ble/ble-device-name.js';
 
 const messages = defineMessages({
     title: {
@@ -23,142 +27,30 @@ const formatPortLabel = port => {
     return port.label || port.address || '';
 };
 
-const formatBleLabel = device => {
+/**
+ * Label yang ditampilkan di daftar Bluetooth.
+ * Prioritas: nama asli dari OS → nama inject/Excel → fallback ID.
+ */
+const formatBleLabel = (device, preferredName) => {
     if (!device) return '';
+    const raw = String(device.rawName || '').trim();
+    if (raw && !isGenericBleLabel(raw)) {
+        return raw;
+    }
+    if (preferredName) {
+        return preferredName;
+    }
     return device.name || device.peripheralId || 'ESP32 BLE';
 };
 
-const WifiPairingSection = props => (
-    <div className={styles.pairBlock}>
-        <div className={styles.pairHeader}>
-            <div className={styles.sectionLabel}>
-                <FormattedMessage
-                    defaultMessage="Papan WiFi di sekitar"
-                    description="Section title for nearby WiFi boards"
-                    id="gui.boardConnection.nearbyBoards"
-                />
-            </div>
-            <button
-                type="button"
-                className={styles.scanButton}
-                onClick={props.onScanWifi}
-                disabled={props.isScanningWifi || Boolean(props.pairingSsid)}
-            >
-                {props.isScanningWifi ? (
-                    <FormattedMessage
-                        defaultMessage="Mencari..."
-                        description="WiFi scan in progress"
-                        id="gui.boardConnection.wifiScanning"
-                    />
-                ) : (
-                    <FormattedMessage
-                        defaultMessage="Cari lagi"
-                        description="Rescan nearby WiFi boards"
-                        id="gui.boardConnection.wifiRescan"
-                    />
-                )}
-            </button>
-        </div>
-
-        <div className={styles.boardList}>
-            {props.networkPorts.map(port => {
-                const label = formatPortLabel(port);
-                return (
-                    <button
-                        type="button"
-                        key={`net-${port.address}`}
-                        className={styles.boardButton}
-                        onClick={() => props.onConnectDiscovered(port.address, label)}
-                        disabled={Boolean(props.pairingSsid)}
-                    >
-                        <span className={styles.boardName}>{label}</span>
-                        <span className={styles.boardBadgeReady}>
-                            <FormattedMessage
-                                defaultMessage="siap"
-                                description="Board already reachable on the network"
-                                id="gui.boardConnection.boardReady"
-                            />
-                        </span>
-                    </button>
-                );
-            })}
-
-            {props.wifiBoards.map(board => {
-                const isPairing = props.pairingSsid === board.ssid;
-                return (
-                    <button
-                        type="button"
-                        key={`ssid-${board.ssid}`}
-                        className={styles.boardButton}
-                        onClick={() => props.onPairBoard(board.ssid)}
-                        disabled={Boolean(props.pairingSsid)}
-                    >
-                        <span className={styles.boardName}>{board.ssid}</span>
-                        {isPairing ? (
-                            <span className={styles.boardBadge}>
-                                <FormattedMessage
-                                    defaultMessage="menyambung..."
-                                    description="Pairing in progress"
-                                    id="gui.boardConnection.pairing"
-                                />
-                            </span>
-                        ) : (
-                            <span className={styles.boardMeta}>
-                                {board.connected && (
-                                    <span className={styles.boardBadgeReady}>
-                                        <FormattedMessage
-                                            defaultMessage="tersambung"
-                                            description="Already joined this hotspot"
-                                            id="gui.boardConnection.ssidConnected"
-                                        />
-                                    </span>
-                                )}
-                                {typeof board.signal === 'number' && (
-                                    <span className={styles.boardSignal}>{board.signal}%</span>
-                                )}
-                            </span>
-                        )}
-                    </button>
-                );
-            })}
-
-            {!props.isScanningWifi &&
-                props.wifiBoards.length === 0 &&
-                props.networkPorts.length === 0 && (
-                <div className={styles.statusText}>
-                    {props.wifiScanError ? props.wifiScanError : (
-                        <FormattedMessage
-                            defaultMessage="Belum ada papan terdeteksi. Nyalakan papan, atau upload sekali lewat USB supaya WiFi-nya aktif."
-                            description="No WiFi boards found hint"
-                            id="gui.boardConnection.noWifiBoards"
-                        />
-                    )}
-                </div>
-            )}
-        </div>
-    </div>
-);
-
-WifiPairingSection.propTypes = {
-    isScanningWifi: PropTypes.bool,
-    networkPorts: PropTypes.arrayOf(PropTypes.object).isRequired,
-    onConnectDiscovered: PropTypes.func.isRequired,
-    onPairBoard: PropTypes.func.isRequired,
-    onScanWifi: PropTypes.func.isRequired,
-    pairingSsid: PropTypes.string,
-    wifiBoards: PropTypes.arrayOf(PropTypes.object).isRequired,
-    wifiScanError: PropTypes.string
-};
-
 const BlePairingSection = props => (
-    // ESP32: pilih board Bluetooth (Scratch Link). USB di bawah untuk flash pertama / cadangan.
     <div className={styles.pairBlock}>
         <div className={styles.pairHeader}>
             <div className={styles.sectionLabel}>
                 <FormattedMessage
-                    defaultMessage="Papan BLE di sekitar"
-                    description="Section title for nearby BLE boards"
-                    id="gui.boardConnection.nearbyBleBoards"
+                    defaultMessage="Bluetooth"
+                    description="Section title for nearby BLE boards short"
+                    id="gui.boardConnection.nearbyBleBoardsShort"
                 />
             </div>
             <button
@@ -169,33 +61,30 @@ const BlePairingSection = props => (
             >
                 {props.isScanningBle ? (
                     <FormattedMessage
-                        defaultMessage="Mencari..."
+                        defaultMessage="Searching..."
                         description="BLE scan in progress"
                         id="gui.boardConnection.bleScanning"
                     />
                 ) : (
                     <FormattedMessage
-                        defaultMessage="Cari lagi"
-                        description="Rescan nearby BLE boards"
-                        id="gui.boardConnection.bleRescan"
+                        defaultMessage="Search"
+                        description="Rescan nearby BLE boards short"
+                        id="gui.boardConnection.bleRescanShort"
                     />
                 )}
             </button>
         </div>
 
-        <div className={styles.hintText}>
-            <FormattedMessage
-                defaultMessage="Butuh Scratch Link. Jangan pair di Windows. Upload USB sekali dulu, lalu pilih board di sini."
-                description="Hint that BLE OTA needs Scratch Link and first USB flash"
-                id="gui.boardConnection.bleHint"
-            />
-        </div>
-
         <div className={styles.boardList}>
             {props.bleDevices.map(device => {
                 const id = device.peripheralId;
-                const label = formatBleLabel(device);
+                // Nama flash terakhir lebih akurat untuk sinyal board saat ini.
+                const preferred = props.lastFlashedBleName || props.targetBleName;
+                const label = formatBleLabel(device, preferred);
                 const isPairing = props.pairingBleId === id;
+                const raw = String(device.rawName || '').trim();
+                const showingInjected = Boolean(preferred) &&
+                    (!raw || isGenericBleLabel(raw) || raw === preferred);
                 return (
                     <button
                         type="button"
@@ -204,23 +93,28 @@ const BlePairingSection = props => (
                         onClick={() => props.onPairBle(device)}
                         disabled={Boolean(props.pairingBleId)}
                     >
-                        <span className={styles.boardName}>{label}</span>
+                        <span className={styles.boardNameStack}>
+                            <span className={styles.boardName}>{label}</span>
+                            {showingInjected && preferred && (
+                                <span className={styles.boardNameSub}>
+                                    <FormattedMessage
+                                        defaultMessage="nama firmware"
+                                        description="Subtitle when showing injected BLE name"
+                                        id="gui.boardConnection.bleFirmwareNameHint"
+                                    />
+                                </span>
+                            )}
+                        </span>
                         {isPairing ? (
                             <span className={styles.boardBadge}>
                                 <FormattedMessage
-                                    defaultMessage="menyambung..."
-                                    description="BLE pairing in progress"
-                                    id="gui.boardConnection.blePairing"
+                                    defaultMessage="..."
+                                    description="BLE pairing in progress short"
+                                    id="gui.boardConnection.blePairingShort"
                                 />
                             </span>
                         ) : (
-                            <span className={styles.boardBadgeReady}>
-                                <FormattedMessage
-                                    defaultMessage="BLE"
-                                    description="BLE device badge"
-                                    id="gui.boardConnection.bleBadge"
-                                />
-                            </span>
+                            <span className={styles.boardBadgeReady}>BLE</span>
                         )}
                     </button>
                 );
@@ -230,9 +124,9 @@ const BlePairingSection = props => (
                 <div className={props.bleScanError ? styles.statusTextError : styles.statusText}>
                     {props.bleScanError ? props.bleScanError : (
                         <FormattedMessage
-                            defaultMessage="Belum ada ESP32 BLE. Klik Cari lagi dan tunggu ~15 detik."
-                            description="No BLE boards found hint"
-                            id="gui.boardConnection.noBleBoards"
+                            defaultMessage="None found. Click Search."
+                            description="No BLE boards found hint short"
+                            id="gui.boardConnection.noBleBoardsShort"
                         />
                     )}
                 </div>
@@ -240,9 +134,9 @@ const BlePairingSection = props => (
             {props.isScanningBle && (
                 <div className={styles.statusTextScanning}>
                     <FormattedMessage
-                        defaultMessage="Mencari Garudabot lewat Scratch Link…"
-                        description="BLE scan in progress status"
-                        id="gui.boardConnection.bleScanStatus"
+                        defaultMessage="Searching for board…"
+                        description="BLE scan in progress status short"
+                        id="gui.boardConnection.bleScanStatusShort"
                     />
                 </div>
             )}
@@ -254,16 +148,69 @@ BlePairingSection.propTypes = {
     bleDevices: PropTypes.arrayOf(PropTypes.object).isRequired,
     bleScanError: PropTypes.string,
     isScanningBle: PropTypes.bool,
+    lastFlashedBleName: PropTypes.string,
     onPairBle: PropTypes.func.isRequired,
     onScanBle: PropTypes.func.isRequired,
-    pairingBleId: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
+    pairingBleId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    targetBleName: PropTypes.string
+};
+
+const UsbPortList = props => (
+    <div className={props.docked ? styles.usbDock : styles.usbSection}>
+        <div className={styles.usbSectionLabel}>
+            {props.esp32Label ? (
+                <FormattedMessage
+                    defaultMessage="USB"
+                    description="USB port section title for ESP32 short"
+                    id="gui.boardConnection.usbTitleEsp32Short"
+                />
+            ) : (
+                <FormattedMessage
+                    defaultMessage="USB"
+                    description="USB port section title short"
+                    id="gui.boardConnection.usbTitleShort"
+                />
+            )}
+        </div>
+        <div className={styles.usbBoardList}>
+            {props.ports.length === 0 && (
+                <div className={styles.statusText}>
+                    <FormattedMessage
+                        defaultMessage="Plug in the board via USB"
+                        description="No USB devices short"
+                        id="gui.boardConnection.noDevicesShort"
+                    />
+                </div>
+            )}
+            {props.ports.map(port => {
+                const label = formatPortLabel(port);
+                return (
+                    <button
+                        type="button"
+                        key={port.address || label}
+                        className={styles.boardButton}
+                        onClick={() => props.onConnect(port.address, label)}
+                    >
+                        {label}
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+);
+
+UsbPortList.propTypes = {
+    docked: PropTypes.bool,
+    esp32Label: PropTypes.bool,
+    onConnect: PropTypes.func.isRequired,
+    ports: PropTypes.arrayOf(PropTypes.object).isRequired
 };
 
 const BoardConnectionDialogComponent = props => {
     const { intl } = props;
 
     return (<Modal
-        className={styles.modalContent}
+        className={props.isEsp32 ? `${styles.modalContent} ${styles.modalWide}` : styles.modalContent}
         contentLabel={intl.formatMessage(messages.label)}
         id='boardConnectionDialog'
         onRequestClose={props.onCancel}
@@ -276,128 +223,96 @@ const BoardConnectionDialogComponent = props => {
                     id="gui.boardConnection.scanning"
                 />
             </div>
+        ) : props.isEsp32 ? (
+            <div className={`${styles.body} ${styles.bodySplit}`}>
+                <div className={styles.splitPane}>
+                    <div className={styles.splitPaneHeader}>
+                        <FormattedMessage
+                            defaultMessage="1. Board name"
+                            description="Left pane title short"
+                            id="gui.boardConnection.splitNameTitleShort"
+                        />
+                    </div>
+                    {props.bleDeviceName && (
+                        <div className={styles.activeNameBanner}>
+                            {props.bleDeviceName}
+                        </div>
+                    )}
+                    <p className={styles.stepHint}>
+                        <FormattedMessage
+                            defaultMessage="This name is used on Upload"
+                            description="One-line hint for BLE name"
+                            id="gui.boardConnection.bleNameHintShort"
+                        />
+                    </p>
+                    <div className={styles.splitPaneScroll}>
+                        <BleNameSection
+                            mode={props.bleNameMode}
+                            draftName={props.bleNameDraft}
+                            nameError={props.bleNameError}
+                            batchNames={props.bleBatchNames}
+                            batchIndex={props.bleBatchIndex}
+                            batchFileName={props.bleBatchFileName}
+                            batchErrors={props.bleBatchErrors}
+                            activeName={props.bleDeviceName}
+                            onModeChange={props.onBleNameModeChange}
+                            onDraftChange={props.onBleNameDraftChange}
+                            onSaveManual={props.onBleNameSave}
+                            onImportCsv={props.onBleNameImport}
+                            onBatchNext={props.onBleBatchNext}
+                            onBatchSkip={props.onBleBatchSkip}
+                            onBatchClear={props.onBleBatchClear}
+                            onUseBatchCurrent={props.onBleUseBatchCurrent}
+                        />
+                    </div>
+                </div>
+
+                <div className={`${styles.splitPane} ${styles.splitPaneRight}`}>
+                    <div className={styles.splitPaneHeader}>
+                        <FormattedMessage
+                            defaultMessage="2. Connect"
+                            description="Right pane title short"
+                            id="gui.boardConnection.splitBoardTitleShort"
+                        />
+                    </div>
+                    <p className={styles.stepHint}>
+                        <FormattedMessage
+                            defaultMessage="Select USB to rename, then Upload"
+                            description="One-line connect hint"
+                            id="gui.boardConnection.connectHintShort"
+                        />
+                    </p>
+                    <div className={styles.splitPaneScroll}>
+                        {props.showUsbList && (
+                            <UsbPortList
+                                ports={props.ports}
+                                onConnect={props.onConnect}
+                                esp32Label
+                            />
+                        )}
+                        <div className={styles.wifiBlock}>
+                            <BlePairingSection
+                                bleDevices={props.bleDevices}
+                                bleScanError={props.bleScanError}
+                                isScanningBle={props.isScanningBle}
+                                pairingBleId={props.pairingBleId}
+                                targetBleName={props.bleDeviceName}
+                                lastFlashedBleName={props.lastFlashedBleName}
+                                onPairBle={props.onPairBle}
+                                onScanBle={props.onScanBle}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
         ) : (
             <div className={styles.body}>
-                {props.isEsp32 ? (
-                    <div className={styles.wifiBlock}>
-                        <BlePairingSection
-                            bleDevices={props.bleDevices}
-                            bleScanError={props.bleScanError}
-                            isScanningBle={props.isScanningBle}
-                            pairingBleId={props.pairingBleId}
-                            onPairBle={props.onPairBle}
-                            onScanBle={props.onScanBle}
-                        />
-                    </div>
-                ) : (
-                    <div className={styles.wifiBlock}>
-                        <WifiPairingSection
-                            isScanningWifi={props.isScanningWifi}
-                            networkPorts={props.networkPorts}
-                            pairingSsid={props.pairingSsid}
-                            wifiBoards={props.wifiBoards}
-                            wifiScanError={props.wifiScanError}
-                            onConnectDiscovered={props.onConnectDiscovered}
-                            onPairBoard={props.onPairBoard}
-                            onScanWifi={props.onScanWifi}
-                        />
-                        {props.showBridgeInstall && (
-                            <details className={styles.installDetails}>
-                                <summary className={styles.installSummary}>
-                                    <FormattedMessage
-                                        defaultMessage="Install ESP-01 bridge (USB-TTL)"
-                                        description="ESP-01 firmware install summary"
-                                        id="gui.boardConnection.installBridgeTitle"
-                                    />
-                                </summary>
-                                <div className={styles.installBody}>
-                                    <select
-                                        className={styles.portSelect}
-                                        value={props.selectedEspPort || ''}
-                                        onChange={e => props.onEspPortChange(e.target.value)}
-                                    >
-                                        <option value="">
-                                            {intl.formatMessage({
-                                                id: 'gui.boardConnection.selectEspPort',
-                                                defaultMessage: 'Pilih port USB-TTL',
-                                                description: 'Placeholder for ESP USB port select'
-                                            })}
-                                        </option>
-                                        {props.installPorts.map(port => (
-                                            <option key={port.address} value={port.address}>
-                                                {formatPortLabel(port)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        type="button"
-                                        className={styles.boardButton}
-                                        onClick={props.onInstallBridge}
-                                        disabled={!props.selectedEspPort || props.isInstallingBridge}
-                                    >
-                                        {props.isInstallingBridge ? (
-                                            <FormattedMessage
-                                                defaultMessage="Installing..."
-                                                description="ESP bridge install in progress"
-                                                id="gui.boardConnection.installingBridge"
-                                            />
-                                        ) : (
-                                            <FormattedMessage
-                                                defaultMessage="Install Bridge"
-                                                description="Install ESP-01 bridge firmware button"
-                                                id="gui.boardConnection.installBridge"
-                                            />
-                                        )}
-                                    </button>
-                                </div>
-                            </details>
-                        )}
-                    </div>
-                )}
-
                 {props.showUsbList && (
-                    <div className={styles.usbSectionLabel}>
-                        {props.isEsp32 ? (
-                            <FormattedMessage
-                                defaultMessage="USB Serial (upload pertama / cadangan)"
-                                description="USB port section title for ESP32"
-                                id="gui.boardConnection.usbTitleEsp32"
-                            />
-                        ) : (
-                            <FormattedMessage
-                                defaultMessage="USB Serial"
-                                description="USB port section title"
-                                id="gui.boardConnection.usbTitle"
-                            />
-                        )}
-                    </div>
-                )}
-
-                {props.showUsbList && (
-                    <div className={styles.boardList}>
-                        {props.ports.length === 0 && (
-                            <div className={styles.statusText}>
-                                <FormattedMessage
-                                    defaultMessage="No devices detected. Please plug in your device via USB."
-                                    description="Board connection no devices."
-                                    id="gui.boardConnection.noDevices"
-                                />
-                            </div>
-                        )}
-                        {props.ports.map(port => {
-                            const label = formatPortLabel(port);
-                            return (
-                                <button
-                                    type="button"
-                                    key={port.address || label}
-                                    className={styles.boardButton}
-                                    onClick={() => props.onConnect(port.address, label)}
-                                >
-                                    {label}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <UsbPortList
+                        ports={props.ports}
+                        onConnect={props.onConnect}
+                        docked
+                    />
                 )}
             </div>
         )}
@@ -407,7 +322,7 @@ const BoardConnectionDialogComponent = props => {
                     <div className={styles.successIcon}>✓</div>
                     <div className={styles.successTitle}>
                         <FormattedMessage
-                            defaultMessage="Koneksi tersambung"
+                            defaultMessage="Connected"
                             description="Board connection success title"
                             id="gui.boardConnection.successTitle"
                         />
@@ -420,53 +335,56 @@ const BoardConnectionDialogComponent = props => {
 };
 
 BoardConnectionDialogComponent.propTypes = {
+    bleBatchErrors: PropTypes.arrayOf(PropTypes.string),
+    bleBatchFileName: PropTypes.string,
+    bleBatchIndex: PropTypes.number,
+    bleBatchNames: PropTypes.arrayOf(PropTypes.string),
+    bleDeviceName: PropTypes.string,
     bleDevices: PropTypes.arrayOf(PropTypes.object),
+    bleNameDraft: PropTypes.string,
+    bleNameError: PropTypes.string,
+    bleNameMode: PropTypes.oneOf(['manual', 'batch']),
     bleScanError: PropTypes.string,
     connectionSuccess: PropTypes.string,
-    installPorts: PropTypes.arrayOf(PropTypes.object),
     isEsp32: PropTypes.bool,
-    isInstallingBridge: PropTypes.bool,
     isLoading: PropTypes.bool,
     isScanningBle: PropTypes.bool,
-    isScanningWifi: PropTypes.bool,
-    networkPorts: PropTypes.arrayOf(PropTypes.object),
+    lastFlashedBleName: PropTypes.string,
+    onBleBatchClear: PropTypes.func,
+    onBleBatchNext: PropTypes.func,
+    onBleBatchSkip: PropTypes.func,
+    onBleNameDraftChange: PropTypes.func,
+    onBleNameImport: PropTypes.func,
+    onBleNameModeChange: PropTypes.func,
+    onBleNameSave: PropTypes.func,
+    onBleUseBatchCurrent: PropTypes.func,
     onCancel: PropTypes.func.isRequired,
     onConnect: PropTypes.func.isRequired,
-    onConnectDiscovered: PropTypes.func,
-    onEspPortChange: PropTypes.func,
-    onInstallBridge: PropTypes.func,
     onPairBle: PropTypes.func,
-    onPairBoard: PropTypes.func,
     onScanBle: PropTypes.func,
-    onScanWifi: PropTypes.func,
     pairingBleId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    pairingSsid: PropTypes.string,
     ports: PropTypes.arrayOf(PropTypes.object).isRequired,
-    selectedEspPort: PropTypes.string,
-    showBridgeInstall: PropTypes.bool,
-    showUsbList: PropTypes.bool,
-    wifiBoards: PropTypes.arrayOf(PropTypes.object),
-    wifiScanError: PropTypes.string
+    showUsbList: PropTypes.bool
 };
 
 BoardConnectionDialogComponent.defaultProps = {
+    bleBatchErrors: [],
+    bleBatchFileName: '',
+    bleBatchIndex: 0,
+    bleBatchNames: [],
+    bleDeviceName: 'Garudabot',
     bleDevices: [],
+    bleNameDraft: 'Garudabot',
+    bleNameError: null,
+    bleNameMode: 'manual',
     bleScanError: null,
     connectionSuccess: null,
-    installPorts: [],
     isEsp32: false,
-    isInstallingBridge: false,
     isLoading: false,
     isScanningBle: false,
-    isScanningWifi: false,
-    networkPorts: [],
+    lastFlashedBleName: null,
     pairingBleId: null,
-    pairingSsid: null,
-    selectedEspPort: '',
-    showBridgeInstall: true,
-    showUsbList: true,
-    wifiBoards: [],
-    wifiScanError: null
+    showUsbList: true
 };
 
 export default injectIntl(BoardConnectionDialogComponent);

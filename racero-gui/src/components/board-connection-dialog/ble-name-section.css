@@ -1,0 +1,209 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+$dialog-accent: $motion-tertiary;
+$dialog-border: rgba(0, 0, 0, 0.12);
+$dialog-muted: $text-primary-transparent;
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.meta {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: $dialog-muted;
+}
+
+.tabs {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.tab,
+.tabActive {
+    flex: 1;
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid $dialog-border;
+}
+
+.tab {
+    background: $ui-white;
+    color: $text-primary;
+}
+
+.tabActive {
+    background: $dialog-accent;
+    border-color: $dialog-accent;
+    color: $ui-white;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.row,
+.batchActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid $dialog-border;
+    border-radius: 0.45rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: $ui-white;
+    color: $text-primary;
+}
+
+.input:focus {
+    outline: none;
+    border-color: $dialog-accent;
+}
+
+.primaryBtn,
+.secondaryBtn {
+    border-radius: 0.4rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.primaryBtn {
+    background: $dialog-accent;
+    border: none;
+    color: $ui-white;
+}
+
+.primaryBtn:hover {
+    background: $pen-primary;
+}
+
+.secondaryBtn {
+    background: $ui-white;
+    border: 1px solid $dialog-border;
+    color: $text-primary;
+}
+
+.secondaryBtn:hover {
+    border-color: $dialog-accent;
+}
+
+.error {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: $error-primary;
+    line-height: 1.35;
+}
+
+.fileName {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: $text-primary;
+}
+
+.emptyBatch {
+    padding: 0.7rem 0.55rem;
+    font-size: 0.8rem;
+    text-align: center;
+    color: $dialog-muted;
+    background: $ui-white;
+    border: 1px dashed $dialog-border;
+    border-radius: 0.45rem;
+}
+
+.progress {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: $text-primary;
+}
+
+.queue {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.queueItem,
+.queueCurrent,
+.queueDone {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.4rem;
+    border: 1px solid $dialog-border;
+    background: $ui-white;
+    font-size: 0.82rem;
+}
+
+.queueCurrent {
+    border-color: $dialog-accent;
+    background: rgba(76, 151, 255, 0.08);
+}
+
+.queueDone {
+    opacity: 0.6;
+}
+
+.queueIndex {
+    flex-shrink: 0;
+    width: 1.2rem;
+    font-weight: 700;
+    color: $dialog-muted;
+    font-size: 0.72rem;
+}
+
+.queueName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    color: $text-primary;
+}
+
+.queueTag,
+.queueTagNow {
+    flex-shrink: 0;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+}
+
+.queueTag {
+    background: rgba(34, 197, 94, 0.16);
+    color: #15803d;
+}
+
+.queueTagNow {
+    background: rgba(76, 151, 255, 0.18);
+    color: $dialog-accent;
+}

@@ -45,8 +45,11 @@ export default class Esp32BleLink {
         if (!params || params.peripheralId === undefined || params.peripheralId === null) {
             return;
         }
+        // rawName = apa yang dikirim OS; name = label tampilan sementara.
+        const rawName = params.name ? String(params.name).trim() : '';
         const normalized = {
             ...params,
+            rawName,
             name: peripheralDisplayName(params)
         };
         this._peripherals[String(params.peripheralId)] = normalized;

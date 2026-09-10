@@ -42,15 +42,19 @@ void startAdvertising() {
         return;
     }
 
-    // ADV: flags + service UUID (agar filter Scratch Link by UUID cocok).
+    // Paket ADV utama: flags + nama board (mis. "Mobil-01").
+    // Windows/Scratch Link biasanya membaca nama dari sini.
     BLEAdvertisementData adv;
     adv.setFlags(0x06); // LE General Discoverable | BR/EDR Not Supported
-    adv.setCompleteServices(BLEUUID(SERVICE_UUID));
+    if (bleName.length() > 0) {
+        adv.setName(bleName.c_str());
+    }
     advertising->setAdvertisementData(adv);
 
-    // Scan response: nama lengkap (Windows/Scratch Link sering baca nama dari sini).
+    // Scan response: service UUID Nordic UART.
+    // Scratch Link memfilter device lewat UUID ini (active scan).
     BLEAdvertisementData scanResp;
-    scanResp.setName(bleName.c_str());
+    scanResp.setCompleteServices(BLEUUID(SERVICE_UUID));
     advertising->setScanResponseData(scanResp);
 
     advertising->addServiceUUID(BLEUUID(SERVICE_UUID));
@@ -179,6 +183,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 } // namespace
 
 void begin(const char *deviceName) {
+    // Nama dari inject app, contoh: begin("Mobil-01"). Kosong → default "Garudabot".
     const char *name = deviceName ? deviceName : DEVICE_NAME;
     bleName = name;
 
@@ -187,7 +192,7 @@ void begin(const char *deviceName) {
     Serial.println();
     Serial.println("[GarudabotBleOta] starting...");
 
-    // Matikan WiFi (API IDF, tanpa Arduino WiFi.h) supaya radio bebas untuk BLE.
+    // Matikan WiFi supaya radio bebas untuk BLE.
     esp_wifi_stop();
     esp_wifi_deinit();
     delay(50);

@@ -17,7 +17,6 @@ use tungstenite::{Message, WebSocket};
 const SCRATCH_LINK_HOST: &str = "127.0.0.1:20111";
 const SCRATCH_LINK_URL: &str = "ws://127.0.0.1:20111/scratch/ble";
 const SERVICE_UUID: &str = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-const DEVICE_NAME: &str = "Garudabot";
 
 type WsStream = WebSocket<TcpStream>;
 
@@ -43,11 +42,14 @@ impl Default for ScratchLinkBleState {
 }
 
 fn display_name(raw: &Value) -> String {
-    raw.as_str()
+    if let Some(name) = raw
+        .as_str()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or(DEVICE_NAME)
-        .to_string()
+    {
+        return name.to_string();
+    }
+    "ESP32 BLE".to_string()
 }
 
 fn rpc_id(v: &Value) -> Option<u64> {

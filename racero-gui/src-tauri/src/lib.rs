@@ -537,6 +537,7 @@ async fn board_compile_and_flash(
     fqbn: String,
     port: String,
     ota_password: Option<String>,
+    ble_device_name: Option<String>,
 ) -> Result<String, String> {
     let sketch_name = "racero_project";
 
@@ -563,6 +564,7 @@ async fn board_compile_and_flash(
     }
 
     let password_input = ota_password.unwrap_or_default();
+    let ble_name = ble_ota::sanitize_ble_device_name(ble_device_name.as_deref());
     // Setiap compile ESP32 (USB maupun BLE) menyertakan GarudabotBleOta agar board
     // tetap bisa di-discover / di-OTA ulang setelah flash.
     let sketch_code = if is_esp32 {
@@ -570,19 +572,29 @@ async fn board_compile_and_flash(
             "compiler-log",
             "ESP32: menyuntikkan GarudabotBleOta (upload BLE / USB).\n",
         );
-        let injected = ble_ota::inject_ble_ota_support(&code);
-        let ok = injected.contains("GarudabotBleOta::begin()");
+        let injected = ble_ota::inject_ble_ota_support(&code, Some(&ble_name));
+        let begin_marker = format!("GarudabotBleOta::begin(\"{}\")", ble_name);
+        let ok = injected.contains(&begin_marker);
         let _ = app.emit(
             "compiler-log",
             if ok {
-                "BLE OTA inject OK — board akan advertise sebagai \"Garudabot\".\n\
-                 Partition ESP32: min_spiffs (1.9MB APP) agar muat BLE + library motor.\n"
-                    .to_string()
+                format!(
+                    "BLE OTA inject OK — sketch memakai begin(\"{}\").\n\
+                     Setelah upload, board harus advertise nama itu (cek juga nRF Connect).\n\
+                     Partition ESP32: min_spiffs (1.9MB APP) agar muat BLE + library motor.\n",
+                    ble_name
+                )
             } else {
-                "PERINGATAN: inject BLE gagal (setup() tidak ditemukan). BLE mungkin tidak aktif.\n"
-                    .to_string()
+                format!(
+                    "PERINGATAN: inject nama BLE \"{}\" gagal (setup() tidak ditemukan / begin tidak cocok).\n\
+                     Board mungkin tetap bernama Garudabot.\n",
+                    ble_name
+                )
             },
         );
+        if !ok {
+            // Tetap lanjut compile, tapi log sudah jelas.
+        }
         injected
     } else {
         code
@@ -679,43 +691,158 @@ fn normalize_port_entry(port: &serde_json::Value) -> serde_json::Value {
     })
 }
 
+/// Ambil objek JSON lengkap berurutan dari stream (arduino-cli --watch bisa
+/// mengirim beberapa event dalam satu chunk stdout).
+fn take_json_objects(buffer: &mut String) -> Vec<serde_json::Value> {
+    let mut out = Vec::new();
+    loop {
+        let start = match buffer.find('{') {
+            Some(i) => i,
+            None => {
+                buffer.clear();
+                break;
+            }
+        };
+        if start > 0 {
+            buffer.drain(..start);
+        }
+
+        let mut depth = 0i32;
+        let mut end = None;
+        let mut in_string = false;
+        let mut escape = false;
+        for (idx, ch) in buffer.char_indices() {
+            if in_string {
+                if escape {
+                    escape = false;
+                } else if ch == '\\' {
+                    escape = true;
+                } else if ch == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+            match ch {
+                '"' => in_string = true,
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(idx + ch.len_utf8());
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let Some(end) = end else {
+            break;
+        };
+        let chunk: String = buffer.drain(..end).collect();
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&chunk) {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn merge_port_into_list(ports: &mut Vec<serde_json::Value>, port: serde_json::Value) {
+    let address = port["address"].as_str().unwrap_or("").to_string();
+    if address.is_empty() {
+        return;
+    }
+    if let Some(existing) = ports.iter_mut().find(|p| p["address"] == address) {
+        *existing = port;
+    } else {
+        ports.push(port);
+    }
+}
+
+fn add_missing_ports(ports: &mut Vec<serde_json::Value>, extras: Vec<serde_json::Value>) {
+    for port in extras {
+        let address = port["address"].as_str().unwrap_or("");
+        if address.is_empty() {
+            continue;
+        }
+        if !ports.iter().any(|p| p["address"] == address) {
+            ports.push(port);
+        }
+    }
+}
+
+fn ports_from_serialport_crate() -> Vec<serde_json::Value> {
+    serialport::available_ports()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| {
+            let label = match &p.port_type {
+                serialport::SerialPortType::UsbPort(info) => {
+                    let product = info.product.clone().unwrap_or_default();
+                    if product.is_empty() {
+                        p.port_name.clone()
+                    } else {
+                        format!("{} ({})", p.port_name, product)
+                    }
+                }
+                _ => p.port_name.clone(),
+            };
+            serde_json::json!({
+                "address": p.port_name,
+                "label": label,
+                "protocol": "serial"
+            })
+        })
+        .collect()
+}
+
+async fn fetch_arduino_cli_ports(app: &AppHandle) -> Vec<serde_json::Value> {
+    let Ok(sidecar) = app.shell().sidecar("arduino-cli") else {
+        return Vec::new();
+    };
+    let Ok(result) = sidecar
+        .args(["board", "list", "--format", "json"])
+        .output()
+        .await
+    else {
+        return Vec::new();
+    };
+    let parsed: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&result.stdout))
+            .unwrap_or(serde_json::json!({}));
+    parsed["ports"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(normalize_port_entry)
+        .filter(|port| !port["address"].as_str().unwrap_or("").is_empty())
+        .collect()
+}
+
+fn publish_detected_ports(app: &AppHandle, ports: &[serde_json::Value]) {
+    let payload = serde_json::json!({ "detected_ports": ports });
+    let _ = app.emit("ports-updated", payload.to_string());
+}
+
 #[tauri::command]
 async fn port_list(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    let cached_ports = {
-        let ports = state.detected_ports.lock().unwrap();
-        ports.clone()
-    };
-
-    let normalized_ports: Vec<serde_json::Value> = if cached_ports.is_empty() {
-        let result = app.shell()
-            .sidecar("arduino-cli")
-            .unwrap()
-            .args(["board", "list", "--format", "json"])
-            .output()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let parsed: serde_json::Value =
-            serde_json::from_str(&String::from_utf8_lossy(&result.stdout))
-                .unwrap_or(serde_json::json!({}));
-
-        parsed["ports"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .iter()
-            .map(normalize_port_entry)
-            .filter(|port| !port["address"].as_str().unwrap_or("").is_empty())
-            .collect()
+    // Selalu refresh dari OS/arduino-cli — jangan andalkan cache watcher saja
+    // (parser --watch bisa rusak jika beberapa event COM datang sekali flush).
+    let mut ports = fetch_arduino_cli_ports(&app).await;
+    if ports.is_empty() {
+        ports = ports_from_serialport_crate();
     } else {
-        cached_ports
-            .iter()
-            .map(normalize_port_entry)
-            .filter(|port| !port["address"].as_str().unwrap_or("").is_empty())
-            .collect()
-    };
+        add_missing_ports(&mut ports, ports_from_serialport_crate());
+    }
 
-    Ok(serde_json::json!({ "detected_ports": normalized_ports }).to_string())
+    {
+        let mut cached = state.detected_ports.lock().unwrap();
+        *cached = ports.clone();
+    }
+    publish_detected_ports(&app, &ports);
+
+    Ok(serde_json::json!({ "detected_ports": ports }).to_string())
 }
 
 #[tauri::command]
@@ -1097,19 +1224,34 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
-                let (mut rx, child) = app_handle
+                // Seed daftar port segera (jangan tunggu event --watch).
+                let initial = fetch_arduino_cli_ports(&app_handle).await;
+                let initial = if initial.is_empty() {
+                    ports_from_serialport_crate()
+                } else {
+                    let mut merged = initial;
+                    add_missing_ports(&mut merged, ports_from_serialport_crate());
+                    merged
+                };
+                {
+                    let state = app_handle.state::<AppState>();
+                    *state.detected_ports.lock().unwrap() = initial.clone();
+                }
+                publish_detected_ports(&app_handle, &initial);
+
+                let (mut rx, child) = match app_handle
                     .shell()
                     .sidecar("arduino-cli")
-                    .expect("TAURI: arduino-cli watcher failed to initialize")
-                    .args([
-                        "board",
-                        "list",
-                        "--watch",
-                        "--format",
-                        "json"
-                    ])
-                    .spawn()
-                    .expect("TAURI: failed to spawn arduino-cli watcher sidecar");
+                    .and_then(|cmd| {
+                        cmd.args(["board", "list", "--watch", "--format", "json"])
+                            .spawn()
+                    }) {
+                    Ok(pair) => pair,
+                    Err(e) => {
+                        log::warn!("arduino-cli board list --watch gagal: {e}");
+                        return;
+                    }
+                };
 
                 {
                     let state = app_handle.state::<AppState>();
@@ -1117,39 +1259,29 @@ pub fn run() {
                 }
 
                 let mut json_buffer = String::new();
-                let mut brace_count = 0;
                 while let Some(event) = rx.recv().await {
                     if let CommandEvent::Stdout(line_bytes) = event {
-                        let chunk = String::from_utf8_lossy(&line_bytes).to_string();
-
+                        let chunk = String::from_utf8_lossy(&line_bytes);
                         json_buffer.push_str(&chunk);
-                        for c in chunk.chars() {
-                            if c == '{' { brace_count += 1; }
-                            if c == '}' { brace_count -= 1; }
-                        }
 
-                        if brace_count == 0 && !json_buffer.trim().is_empty() {
-                            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_buffer) {
-                                let state = app_handle.state::<AppState>();
-                                let mut ports_list = state.detected_ports.lock().unwrap();
+                        for data in take_json_objects(&mut json_buffer) {
+                            let state = app_handle.state::<AppState>();
+                            let mut ports_list = state.detected_ports.lock().unwrap();
 
-                                let event_type = data["eventType"].as_str().unwrap_or("");
-                                let incoming_port = &data["port"];
+                            let event_type = data["eventType"].as_str().unwrap_or("");
+                            let incoming_port = &data["port"];
 
-                                if event_type == "add" {
-                                    let normalized = normalize_port_entry(incoming_port);
-                                    if !ports_list.iter().any(|p| p["address"] == normalized["address"]) {
-                                        ports_list.push(normalized);
-                                    }
-                                } else if event_type == "remove" {
-                                    ports_list.retain(|p| p["address"] != incoming_port["address"]);
+                            if event_type == "add" {
+                                let normalized = normalize_port_entry(incoming_port);
+                                merge_port_into_list(&mut ports_list, normalized);
+                            } else if event_type == "remove" {
+                                let address = incoming_port["address"].as_str().unwrap_or("");
+                                if !address.is_empty() {
+                                    ports_list.retain(|p| p["address"] != address);
                                 }
-
-                                let payload = serde_json::json!({ "detected_ports": *ports_list });
-                                app_handle.emit("ports-updated", payload.to_string()).unwrap();
-
-                                json_buffer.clear();
                             }
+
+                            publish_detected_ports(&app_handle, &ports_list);
                         }
                     }
                 }
