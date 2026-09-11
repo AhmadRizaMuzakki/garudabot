@@ -222,9 +222,30 @@
     margin: 0 0.25rem 0 0.5rem;
 }
 
+/* Label nama board — elemen terpisah di samping menu Board (bukan bagian dropdown). */
+.selected-board-label {
+    cursor: default;
+    pointer-events: none;
+    padding: 0 0.5rem;
+}
+
+.selected-board-name {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    font-size: 0.8rem;
+    opacity: 0.9;
+}
+
 @media only screen and (max-width: 1024px) {
     .tutorials-label, .collapsible-label {
         display: none;
+    }
+
+    .selected-board-name {
+        max-width: 8rem;
     }
 
     .help-icon {

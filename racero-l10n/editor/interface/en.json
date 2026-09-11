@@ -16,6 +16,7 @@
     "gui.cnu.finished": "Finished",
     "gui.cnu.wait": "Please Wait...",
     "gui.cnu.close": "Close",
+    "gui.cnu.cancel": "Cancel",
     "gui.unsupportedBrowser.label": "Browser is not supported",
     "gui.unsupportedBrowser.errorLabel": "An Error Occurred",
     "gui.unsupportedBrowser.notRecommended": "We are very sorry, but it looks like you are using a browser version that Scratch does not support. We recommend updating to the latest version of a supported browser such as Google Chrome, Mozilla Firefox, Microsoft Edge, or Apple Safari.",

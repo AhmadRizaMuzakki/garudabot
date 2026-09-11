@@ -16,6 +16,7 @@
     "gui.cnu.finished": "Selesai",
     "gui.cnu.wait": "Mohon Menunggu...",
     "gui.cnu.close": "Tutup",
+    "gui.cnu.cancel": "Batal",
     "gui.unsupportedBrowser.label": "Peramban tidak didukung",
     "gui.unsupportedBrowser.errorLabel": "Sebuah Kesalahan Terjadi",
     "gui.unsupportedBrowser.notRecommended": "Kami minta maaf, tapi tampaknya Anda menggunakan sebuah versi peramban yang tidak didukung Scratch. Kami menyarankan memperbarui ke versi terbaru peramban yang didukung seperti Google Chrome, Mozilla Firefox, Microsoft Edge, atau Apple Safari.",

@@ -11,6 +11,7 @@ import {
     setInstallStatus,
     setUploadStatus,
     setConnectionDetails,
+    setBoardName,
 } from '../reducers/board';
 
 import {
@@ -29,6 +30,14 @@ class Board extends React.Component {
         ]);
     }
     componentDidMount () {
+        // Pastikan label menu bar cocok dengan boardConfig VM saat startup.
+        const name = this.props.vm &&
+            this.props.vm.runtime &&
+            this.props.vm.runtime.boardConfig &&
+            this.props.vm.runtime.boardConfig.name;
+        if (name && name !== this.props.selectedBoardName) {
+            this.props.onSetBoardName(name);
+        }
     }
     componentWillUnmount() {
     }
@@ -111,6 +120,7 @@ Board.propTypes = {
     isCompiling: PropTypes.bool,
     isInstalling: PropTypes.bool,
     isUploading: PropTypes.bool,
+    onSetBoardName: PropTypes.func,
     onSetSelecting: PropTypes.func,
     onSetSelected: PropTypes.func,
     onSetConnected: PropTypes.func,
@@ -118,6 +128,7 @@ Board.propTypes = {
     onSetInstalling: PropTypes.func,
     onSetUploading: PropTypes.func,
     onSetConnectionDetails: PropTypes.func,
+    selectedBoardName: PropTypes.string,
 };
 
 const mapStateToProps = state => {
@@ -130,6 +141,7 @@ const mapStateToProps = state => {
         isCompiling: state.raceroGui.board.isCompiling,
         isInstalling: state.raceroGui.board.isInstalling,
         isUploading: state.raceroGui.board.isUploading,
+        selectedBoardName: state.raceroGui.board.selectedBoardName,
 
         connectedDevice: state.raceroGui.board.connectedDevice,
     };
@@ -142,7 +154,8 @@ const mapDispatchToProps = dispatch => ({
     onSetConnected: connected => dispatch(setConnectedStatus(connected)),
     onSetCompiling: compiling => dispatch(setCompilingStatus(compiling)),
     onSetInstalling: installing => dispatch(setInstallStatus(installing)),
-    onSetUploading: uploading => dispatch(setUploadtatus(uploading)),
+    onSetUploading: uploading => dispatch(setUploadStatus(uploading)),
+    onSetBoardName: name => dispatch(setBoardName(name)),
 
     onSetConnectionDetails: details => dispatch(setConnectionDetails(details)),
 });

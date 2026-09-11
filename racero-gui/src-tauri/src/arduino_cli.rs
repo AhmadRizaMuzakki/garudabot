@@ -2,43 +2,272 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime};
 
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_shell::{process::CommandEvent, ShellExt};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
 
-pub(crate) async fn run_with_logs(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
+/// Proses compile/upload yang sedang jalan — bisa di-kill dari tombol Cancel.
+pub struct CompileJobState {
+    child: Mutex<Option<CommandChild>>,
+    cancelled: AtomicBool,
+}
+
+impl Default for CompileJobState {
+    fn default() -> Self {
+        Self {
+            child: Mutex::new(None),
+            cancelled: AtomicBool::new(false),
+        }
+    }
+}
+
+impl CompileJobState {
+    fn clear_child(&self) {
+        if let Ok(mut guard) = self.child.lock() {
+            *guard = None;
+        }
+    }
+
+    fn take_and_kill(&self) {
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(child) = guard.take() {
+                let _ = child.kill();
+            }
+        }
+    }
+
+    /// Tandai cancel + kill proses (dipakai Exit app juga).
+    pub fn request_cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.take_and_kill();
+    }
+}
+
+/// Batalkan compile/upload yang sedang berjalan (dipanggil tombol Cancel di UI).
+#[tauri::command]
+pub fn board_compile_cancel(app: AppHandle, state: State<'_, CompileJobState>) -> Result<(), String> {
+    state.request_cancel();
+    let _ = app.emit(
+        "compiler-log",
+        "\nUpload dibatalkan oleh pengguna.\n",
+    );
+    Ok(())
+}
+
+/// Jumlah job compile paralel — di PC lama dibatasi supaya UI tidak freeze.
+pub(crate) fn compile_job_count() -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2);
+    if cpus <= 2 {
+        1
+    } else if cpus <= 4 {
+        // i5 gen lama (2C/4T): 2 job — masih lebih cepat dari 1, tanpa saturasi penuh.
+        2
+    } else {
+        // Sisakan 1 core untuk UI/OS; cap 6 agar tidak thrash RAM.
+        (cpus - 1).min(6)
+    }
+}
+
+/// Flag performa compile: jobs terbatas + build path stabil (cache .o).
+pub(crate) fn append_compile_speed_args(args: &mut Vec<String>, build_path: Option<&Path>) {
+    let jobs = compile_job_count();
+    args.push("--jobs".to_string());
+    args.push(jobs.to_string());
+    // Kurangi kerja parsing warning (sedikit lebih ringan di toolchain lama).
+    args.push("--warnings".to_string());
+    args.push("none".to_string());
+    if let Some(path) = build_path {
+        args.push("--build-path".to_string());
+        args.push(path_for_cli(path));
+    }
+}
+
+/// Jalankan arduino-cli.
+/// `quiet`: log ringkas untuk upload USB (tanpa dump esptool).
+pub(crate) async fn run_with_logs(
+    app: &AppHandle,
+    args: Vec<String>,
+    quiet: bool,
+) -> Result<i32, String> {
+    let job = app.state::<CompileJobState>();
+    job.cancelled.store(false, Ordering::SeqCst);
+    job.clear_child();
+
+    if !quiet {
+        let jobs = compile_job_count();
+        let _ = app.emit(
+            "compiler-log",
+            format!("Compile jobs: {} (disesuaikan dengan CPU)\n", jobs),
+        );
+    } else {
+        let _ = app.emit("compiler-log", "Mengompilasi...\n");
+    }
+
     let sidecar = app
         .shell()
         .sidecar("arduino-cli")
         .map_err(|e| format!("Arduino CLI: {}", e))?;
 
     let mut exit_code = 0;
-    let (mut rx, _child) = sidecar
+    let (mut rx, child) = sidecar
         .args(args)
         .spawn()
         .map_err(|e| format!("Arduino CLI: {}", e))?;
 
+    {
+        let mut guard = job
+            .child
+            .lock()
+            .map_err(|_| "Compile job lock gagal.".to_string())?;
+        *guard = Some(child);
+    }
+
+    // Batch log: flush tiap ~200ms atau buffer penuh.
+    let mut log_buf = String::with_capacity(4096);
+    let mut last_flush = Instant::now();
+    let flush_every = Duration::from_millis(200);
+    let mut quiet_progress = QuietUploadProgress::default();
+
+    let flush = |app: &AppHandle, buf: &mut String| {
+        if buf.is_empty() {
+            return;
+        }
+        let chunk = std::mem::take(buf);
+        let _ = app.emit("compiler-log", chunk);
+    };
+
     while let Some(event) = rx.recv().await {
+        if job.cancelled.load(Ordering::SeqCst) {
+            flush(app, &mut log_buf);
+            job.clear_child();
+            return Err("Upload dibatalkan.".to_string());
+        }
         match event {
-            CommandEvent::Stdout(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes).to_string();
-                let _ = app.emit("compiler-log", line);
-            }
-            CommandEvent::Stderr(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes).to_string();
-                let _ = app.emit("compiler-log", line);
+            CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
+                let line = String::from_utf8_lossy(&line_bytes);
+                if quiet {
+                    if let Some(msg) = quiet_progress.map_line(&line) {
+                        log_buf.push_str(&msg);
+                    }
+                } else {
+                    log_buf.push_str(&line);
+                    if !line.ends_with('\n') {
+                        log_buf.push('\n');
+                    }
+                }
+                if last_flush.elapsed() >= flush_every || log_buf.len() >= 4096 {
+                    flush(app, &mut log_buf);
+                    last_flush = Instant::now();
+                }
             }
             CommandEvent::Terminated(payload) => {
+                flush(app, &mut log_buf);
                 exit_code = payload.code.unwrap_or(-1);
-                let status = format!("\nProcess finished with code: {:?}", payload.code);
-                let _ = app.emit("compiler-log", status);
+                if !job.cancelled.load(Ordering::SeqCst) {
+                    if quiet {
+                        if exit_code == 0 {
+                            let _ = app.emit("compiler-log", "Selesai.\n");
+                        } else {
+                            let _ = app.emit(
+                                "compiler-log",
+                                format!("Gagal (kode {}).\n", exit_code),
+                            );
+                        }
+                    } else {
+                        let status = format!("\nProcess finished with code: {:?}", payload.code);
+                        let _ = app.emit("compiler-log", status);
+                    }
+                }
             }
             _ => {}
         }
     }
 
+    flush(app, &mut log_buf);
+    job.clear_child();
+    if job.cancelled.load(Ordering::SeqCst) {
+        return Err("Upload dibatalkan.".to_string());
+    }
     Ok(exit_code)
+}
+
+/// Filter log upload USB → beberapa baris status saja.
+#[derive(Default)]
+struct QuietUploadProgress {
+    compiling: bool,
+    connected: bool,
+    uploading: bool,
+}
+
+impl QuietUploadProgress {
+    fn map_line(&mut self, line: &str) -> Option<String> {
+        let t = line.trim();
+        if t.is_empty() {
+            return None;
+        }
+        let lower = t.to_ascii_lowercase();
+
+        // Error / warning penting selalu tampil.
+        if lower.contains("error:")
+            || lower.contains("error ")
+            || lower.contains("failed")
+            || lower.contains("fatal")
+            || lower.contains("traceback")
+            || lower.contains("permission denied")
+            || lower.contains("could not open")
+            || lower.contains("timed out")
+            || lower.contains("no serial data")
+            || lower.contains("wrong boot mode")
+        {
+            return Some(format!("{}\n", t));
+        }
+
+        if !self.compiling
+            && (lower.contains("compiling sketch")
+                || (lower.contains("library") && lower.contains("detected"))
+                || lower.starts_with("sketch uses"))
+        {
+            self.compiling = true;
+            // "Mengompilasi..." sudah di-emit di awal; skip spam.
+            if lower.starts_with("sketch uses") {
+                // Satu baris ukuran sketch — berguna & singkat.
+                return Some(format!("{}\n", t));
+            }
+            return None;
+        }
+
+        if !self.connected
+            && (lower.contains("connecting")
+                || lower.contains("connected to")
+                || lower.contains("serial port"))
+        {
+            if lower.contains("connecting") || lower.contains("connected to") {
+                self.connected = true;
+                return Some("Menghubungkan ke board...\n".into());
+            }
+            return None;
+        }
+
+        if !self.uploading
+            && (lower.contains("writing at")
+                || lower.contains("uploading")
+                || lower.contains("flashing")
+                || lower.contains("writing '"))
+        {
+            self.uploading = true;
+            return Some("Mengunggah firmware...\n".into());
+        }
+
+        None
+    }
 }
 
 pub(crate) fn libraries_dir(app: &AppHandle) -> Option<PathBuf> {
@@ -63,12 +292,22 @@ pub(crate) fn libraries_dir(app: &AppHandle) -> Option<PathBuf> {
 /// lalu mereport path dengan prefix `\\?\`, dan toolchain ESP32 gagal `#include`
 /// meski file `.h` ada di Explorer. Mirror ke path pendek tanpa "Program Files".
 pub(crate) fn append_libraries(app: &AppHandle, args: &mut Vec<String>) {
+    append_libraries_with_log(app, args, true);
+}
+
+pub(crate) fn append_libraries_quiet(app: &AppHandle, args: &mut Vec<String>) {
+    append_libraries_with_log(app, args, false);
+}
+
+fn append_libraries_with_log(app: &AppHandle, args: &mut Vec<String>, log_path: bool) {
     if let Some(dir) = libraries_dir_for_cli(app) {
         let cli_path = path_for_cli(&dir);
-        let _ = app.emit(
-            "compiler-log",
-            format!("Arduino libraries: {}\n", cli_path),
-        );
+        if log_path {
+            let _ = app.emit(
+                "compiler-log",
+                format!("Arduino libraries: {}\n", cli_path),
+            );
+        }
         args.push("--libraries".to_string());
         args.push(cli_path);
     }
@@ -248,5 +487,10 @@ mod tests {
         assert!(!path_needs_cli_mirror(Path::new(
             r"C:\Users\Public\Garudabot\arduino-libraries"
         )));
+    }
+
+    #[test]
+    fn compile_jobs_at_least_one() {
+        assert!(compile_job_count() >= 1);
     }
 }

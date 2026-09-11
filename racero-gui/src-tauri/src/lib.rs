@@ -215,7 +215,11 @@ fn normalize_upload_port(port: &str, fqbn: &str, ota_password: &str) -> (String,
 }
 
 async fn run_arduino_cli_with_logs(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
-    arduino_cli::run_with_logs(app, args).await
+    arduino_cli::run_with_logs(app, args, false).await
+}
+
+async fn run_arduino_cli_quiet(app: &AppHandle, args: Vec<String>) -> Result<i32, String> {
+    arduino_cli::run_with_logs(app, args, true).await
 }
 
 /// netsh dipanggil langsung (bukan lewat sidecar) karena ia bagian dari Windows.
@@ -522,10 +526,6 @@ async fn board_install_esp01_bridge(app: AppHandle, port: String) -> Result<Stri
     }
 }
 
-fn append_arduino_libraries(app: &AppHandle, args: &mut Vec<String>) {
-    arduino_cli::append_libraries(app, args);
-}
-
 fn fqbn_with_safe_upload_speed(fqbn: &str) -> String {
     arduino_cli::fqbn_with_safe_upload_speed(fqbn)
 }
@@ -568,32 +568,23 @@ async fn board_compile_and_flash(
     // Setiap compile ESP32 (USB maupun BLE) menyertakan GarudabotBleOta agar board
     // tetap bisa di-discover / di-OTA ulang setelah flash.
     let sketch_code = if is_esp32 {
-        let _ = app.emit(
-            "compiler-log",
-            "ESP32: menyuntikkan GarudabotBleOta (upload BLE / USB).\n",
-        );
         let injected = ble_ota::inject_ble_ota_support(&code, Some(&ble_name));
         let begin_marker = format!("GarudabotBleOta::begin(\"{}\")", ble_name);
         let ok = injected.contains(&begin_marker);
-        let _ = app.emit(
-            "compiler-log",
-            if ok {
-                format!(
-                    "BLE OTA inject OK — sketch memakai begin(\"{}\").\n\
-                     Setelah upload, board harus advertise nama itu (cek juga nRF Connect).\n\
-                     Partition ESP32: min_spiffs (1.9MB APP) agar muat BLE + library motor.\n",
-                    ble_name
-                )
-            } else {
-                format!(
-                    "PERINGATAN: inject nama BLE \"{}\" gagal (setup() tidak ditemukan / begin tidak cocok).\n\
-                     Board mungkin tetap bernama Garudabot.\n",
-                    ble_name
-                )
-            },
-        );
+        // USB: diam jika OK; hanya log jika gagal. BLE: tetap ringkas.
         if !ok {
-            // Tetap lanjut compile, tapi log sudah jelas.
+            let _ = app.emit(
+                "compiler-log",
+                format!(
+                    "PERINGATAN: inject nama BLE \"{}\" gagal — board mungkin tetap Garudabot.\n",
+                    ble_name
+                ),
+            );
+        } else if is_ble_ota {
+            let _ = app.emit(
+                "compiler-log",
+                format!("BLE inject: begin(\"{}\").\n", ble_name),
+            );
         }
         injected
     } else {
@@ -644,7 +635,12 @@ async fn board_compile_and_flash(
         args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
     }
 
-    append_arduino_libraries(&app, &mut args);
+    // Build path tetap di sketch temp → upload ke-2+ reuse cache core ESP32.
+    let build_path = sketch_dir.join("build");
+    let _ = fs::create_dir_all(&build_path);
+    arduino_cli::append_compile_speed_args(&mut args, Some(&build_path));
+
+    arduino_cli::append_libraries_quiet(&app, &mut args);
     args.push(sketch_path);
 
     if is_network_serial_port(&upload_port) || looks_like_ip_and_port(&port) {
@@ -657,7 +653,8 @@ async fn board_compile_and_flash(
         );
     }
 
-    let exit_code = run_arduino_cli_with_logs(&app, args).await?;
+    // Log ringkas untuk USB serial (tanpa dump esptool).
+    let exit_code = run_arduino_cli_quiet(&app, args).await?;
 
     if exit_code != 0 {
         let hint = if is_network_serial_port(&upload_port) || looks_like_ip_and_port(&port) {
@@ -1219,6 +1216,7 @@ pub fn run() {
             display: Mutex::new(None),
             watcher_child: Mutex::new(None)
         })
+        .manage(arduino_cli::CompileJobState::default())
         .manage(ble_scratch_link::ScratchLinkBleState::default())
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -1294,6 +1292,7 @@ pub fn run() {
             board_disconnect,
             board_install_esp01_bridge,
             board_compile_and_flash,
+            arduino_cli::board_compile_cancel,
             wifi_scan_boards,
             wifi_connect_board,
             pin_digital_write,
@@ -1330,6 +1329,11 @@ pub fn run() {
                 if let Some(child) = watcher_guard.take() {
                     let _ = child.kill();
                     println!("TAURI: arduino-cli watcher successfully terminated.");
+                }
+
+                // Hentikan compile/upload jika masih jalan saat app ditutup.
+                if let Some(job) = app_handle.try_state::<arduino_cli::CompileJobState>() {
+                    job.request_cancel();
                 }
             }
         });

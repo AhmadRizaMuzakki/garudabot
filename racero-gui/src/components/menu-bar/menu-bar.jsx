@@ -673,6 +673,17 @@ class MenuBar extends React.Component {
                                 )}</Board>
                             </MenuBarMenu>
                         </div>
+                        {/* Label info saja — di luar tombol dropdown Board. */}
+                        {this.props.selectedBoardName && (
+                            <div
+                                className={classNames(styles.menuBarItem, styles.selectedBoardLabel)}
+                                title={this.props.selectedBoardName}
+                            >
+                                <span className={styles.selectedBoardName}>
+                                    {this.props.selectedBoardName}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -778,6 +789,7 @@ MenuBar.propTypes = {
     onToggleLoginOpen: PropTypes.func,
     projectTitle: PropTypes.string,
     renderLogin: PropTypes.func,
+    selectedBoardName: PropTypes.string,
     sessionExists: PropTypes.bool,
     settingsMenuOpen: PropTypes.bool,
     shouldSaveBeforeTransition: PropTypes.func,
@@ -809,6 +821,7 @@ const mapStateToProps = (state, ownProps) => {
         loginMenuOpen: loginMenuOpen(state),
         modeMenuOpen: modeMenuOpen(state),
         projectTitle: state.raceroGui.projectTitle,
+        selectedBoardName: state.raceroGui.board.selectedBoardName,
         sessionExists: state.session && typeof state.session.session !== 'undefined',
         settingsMenuOpen: settingsMenuOpen(state),
         username: user ? user.username : null,

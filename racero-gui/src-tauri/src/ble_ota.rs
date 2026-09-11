@@ -209,24 +209,21 @@ pub(crate) async fn compile_firmware_bin(
     sketch_dir: &Path,
     fqbn: &str,
 ) -> Result<(PathBuf, Vec<u8>), String> {
+    // Jangan hapus build/ tiap kali — biarkan arduino-cli reuse object file core/library.
+    // (Hanya .ino yang berubah; core ESP32 tetap di-cache → jauh lebih ringan di PC lama.)
     let build_path = sketch_dir.join("build");
-    let build_path_str = build_path
-        .to_str()
-        .ok_or_else(|| "Path build tidak valid.".to_string())?
-        .to_string();
-    let _ = fs::remove_dir_all(&build_path);
+    fs::create_dir_all(&build_path).map_err(|e| format!("Buat folder build: {}", e))?;
 
     let mut compile_args = vec![
         "compile".to_string(),
         "--fqbn".to_string(),
         arduino_cli::fqbn_with_safe_upload_speed(fqbn),
-        "--build-path".to_string(),
-        build_path_str,
     ];
+    arduino_cli::append_compile_speed_args(&mut compile_args, Some(&build_path));
     arduino_cli::append_libraries(app, &mut compile_args);
     compile_args.push(sketch_path);
 
-    let compile_code = arduino_cli::run_with_logs(app, compile_args).await?;
+    let compile_code = arduino_cli::run_with_logs(app, compile_args, true).await?;
     if compile_code != 0 {
         return Err(format!("Compile gagal (exit code {}).", compile_code));
     }

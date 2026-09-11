@@ -14,6 +14,7 @@ const SET_UPLOADING  = 'racero-gui/board/SET_UPLOADING';
 const SET_CONNECTED_DEVICES = 'racero-gui/board/SET_CONNECTED_DEVICES';
 const SET_OTA_PASSWORD = 'racero-gui/board/SET_OTA_PASSWORD';
 const SET_BLE_DEVICE_NAME = 'racero-gui/board/SET_BLE_DEVICE_NAME';
+const SET_BOARD_NAME = 'racero-gui/board/SET_BOARD_NAME';
 
 const initialState = {
     isSelecting: false,
@@ -25,6 +26,8 @@ const initialState = {
     isUploading: false,
 
     connectedDevice: null,
+    // Nama tipe board aktif (mis. "Arduino Uno", "ESP32") — ditampilkan di menu bar.
+    selectedBoardName: 'Arduino Uno',
     otaPassword: '',
     bleDeviceName: typeof localStorage !== 'undefined' ?
         loadStoredBleDeviceName() :
@@ -73,6 +76,10 @@ const reducer = function (state, action) {
         case SET_BLE_DEVICE_NAME:
             return Object.assign({}, state, {
                 bleDeviceName: action.name
+            });
+        case SET_BOARD_NAME:
+            return Object.assign({}, state, {
+                selectedBoardName: action.name
             });
         default:
             return state;
@@ -136,6 +143,13 @@ const setBleDeviceName = function (name) {
     };
 };
 
+const setBoardName = function (name) {
+    return {
+        type: SET_BOARD_NAME,
+        name: name
+    };
+};
+
 export {
     reducer as default,
     initialState as boardInitialState,
@@ -149,4 +163,5 @@ export {
     setConnectionDetails,
     setOtaPassword,
     setBleDeviceName,
+    setBoardName,
 };
