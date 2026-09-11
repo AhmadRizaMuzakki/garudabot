@@ -42,19 +42,23 @@ void startAdvertising() {
         return;
     }
 
-    // Paket ADV utama: flags + nama board (mis. "Mobil-01").
-    // Windows/Scratch Link biasanya membaca nama dari sini.
+    // ADV utama (~31 byte): flags + service UUID Nordic UART.
+    // Scratch Link di Windows memfilter lewat UUID di paket ADV (bukan cuma nama).
+    // flags(3) + uuid128(18) = 21 → sisa ~10 byte → nama pendek (≤8) masih muat di ADV.
     BLEAdvertisementData adv;
     adv.setFlags(0x06); // LE General Discoverable | BR/EDR Not Supported
-    if (bleName.length() > 0) {
+    adv.setCompleteServices(BLEUUID(SERVICE_UUID));
+    const size_t maxNameInAdv = 8;
+    if (bleName.length() > 0 && bleName.length() <= maxNameInAdv) {
         adv.setName(bleName.c_str());
     }
     advertising->setAdvertisementData(adv);
 
-    // Scan response: service UUID Nordic UART.
-    // Scratch Link memfilter device lewat UUID ini (active scan).
+    // Scan response: nama lengkap (sampai 15 char) untuk Windows / nRF Connect.
     BLEAdvertisementData scanResp;
-    scanResp.setCompleteServices(BLEUUID(SERVICE_UUID));
+    if (bleName.length() > 0) {
+        scanResp.setName(bleName.c_str());
+    }
     advertising->setScanResponseData(scanResp);
 
     advertising->addServiceUUID(BLEUUID(SERVICE_UUID));

@@ -51,6 +51,7 @@
 .footer {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 15px;
 }
 
@@ -70,4 +71,19 @@
   /* Changed from $ui-primary-transparent to a hardcoded rgba value */
   background-color: rgba(76, 151, 255, 0.5);
   cursor: default;
+}
+
+.cancel-button {
+  padding: 10px 20px;
+  background-color: #FF8C1A;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.cancel-button:hover {
+  background-color: #e67a0f;
 }

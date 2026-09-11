@@ -3,7 +3,11 @@ import bindAll from 'lodash.bindall';
 import React from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
-import { setSelectingStatus, setConnectionDetails } from '../reducers/board';
+import {
+    setSelectingStatus,
+    setConnectionDetails,
+    setBoardName
+} from '../reducers/board';
 
 import { boards } from 'racero-boards';
 
@@ -19,6 +23,17 @@ class BoardSelectionDialog extends React.Component {
         ]);
 
         this.boards = Object.values(boards);
+    }
+
+    componentDidMount () {
+        // Sinkron nama board dari VM (mis. default extension Pins) ke menu bar.
+        const name = this.props.vm &&
+            this.props.vm.runtime &&
+            this.props.vm.runtime.boardConfig &&
+            this.props.vm.runtime.boardConfig.name;
+        if (name && name !== this.props.selectedBoardName) {
+            this.props.onSetBoardName(name);
+        }
     }
 
     handleConnect(board) {
@@ -49,6 +64,7 @@ class BoardSelectionDialog extends React.Component {
 
         // Ganti board ESP32 ↔ Arduino: reset target koneksi lama.
         this.props.onSetConnectionDetails(null);
+        this.props.onSetBoardName(board.name);
 
         this.props.onSetSelecting(false);
     }
@@ -74,18 +90,29 @@ class BoardSelectionDialog extends React.Component {
 
 BoardSelectionDialog.propTypes = {
     isSelecting: PropTypes.bool,
+    onSetBoardName: PropTypes.func,
     onSetConnectionDetails: PropTypes.func,
     onSetSelecting: PropTypes.func,
+    selectedBoardName: PropTypes.string,
+    vm: PropTypes.shape({
+        runtime: PropTypes.shape({
+            boardConfig: PropTypes.shape({
+                name: PropTypes.string
+            })
+        })
+    })
 };
 
 const mapStateToProps = state => ({
     vm: state.raceroGui.vm,
-    isSelecting: state.raceroGui.board.isSelecting
+    isSelecting: state.raceroGui.board.isSelecting,
+    selectedBoardName: state.raceroGui.board.selectedBoardName
 });
 
 const mapDispatchToProps = dispatch => ({
     onSetSelecting: selecting => dispatch(setSelectingStatus(selecting)),
     onSetConnectionDetails: details => dispatch(setConnectionDetails(details)),
+    onSetBoardName: name => dispatch(setBoardName(name)),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(BoardSelectionDialog);

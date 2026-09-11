@@ -7,6 +7,8 @@
 // App menyisipkan otomatis ke sketch ESP32 lewat ble_ota.rs, contoh:
 //   GarudabotBleOta::begin("Mobil-01");  // nama advertising BLE
 //   GarudabotBleOta::loop();
+// Advertising: service UUID di paket ADV (agar Scratch Link Windows ketemu),
+// nama di scan response (dan ikut di ADV jika nama ≤ 8 karakter).
 // Protokol harus cocok dengan racero-gui/src/lib/ble/protocol.js
 
 namespace GarudabotBleOta {
