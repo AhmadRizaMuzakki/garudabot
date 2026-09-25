@@ -13,8 +13,14 @@ const postcssImport = require('postcss-import');
 
 const STATIC_PATH = process.env.STATIC_PATH || '/static';
 
+// `tauri build` → `npm run build` → webpack tanpa NODE_ENV.
+// Tanpa default ini, DefinePlugin inject "undefined" → isAppDebug() ON di installer.
+const isWebpackServe = process.argv.includes('serve');
+const NODE_ENV = process.env.NODE_ENV || (isWebpackServe ? 'development' : 'production');
+process.env.NODE_ENV = NODE_ENV;
+
 const base = {
-    mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+    mode: NODE_ENV === 'production' ? 'production' : 'development',
     devtool: 'cheap-module-source-map',
     devServer: {
         contentBase: path.resolve(__dirname, 'build'),
@@ -170,9 +176,11 @@ module.exports = [
         },
         plugins: base.plugins.concat([
             new webpack.DefinePlugin({
-                'process.env.NODE_ENV': `"${process.env.NODE_ENV}"`,
+                'process.env.NODE_ENV': JSON.stringify(NODE_ENV),
                 'process.env.DEBUG': Boolean(process.env.DEBUG),
-                'process.env.GA_ID': `"${process.env.GA_ID || 'UA-000000-01'}"`
+                'process.env.GA_ID': JSON.stringify(process.env.GA_ID || 'UA-000000-01'),
+                // Explicit: false di tauri build / npm run build; true hanya di webpack serve
+                __GARUDABOT_APP_DEBUG__: JSON.stringify(NODE_ENV === 'development')
             }),
             new HtmlWebpackPlugin({
                 chunks: ['lib.min', 'gui'],
@@ -226,7 +234,7 @@ module.exports = [
         ])
     })
 ].concat(
-    process.env.NODE_ENV === 'production' || process.env.BUILD_MODE === 'dist' ? (
+    NODE_ENV === 'production' || process.env.BUILD_MODE === 'dist' ? (
         defaultsDeep({}, base, {
             target: 'web',
             entry: {

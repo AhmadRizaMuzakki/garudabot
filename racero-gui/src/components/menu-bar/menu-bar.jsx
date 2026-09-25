@@ -75,6 +75,8 @@ import BoardSelectionDialog from '../../containers/board-selection-dialog.jsx';
 import BoardConnectionDialog from '../../containers/board-connection-dialog.jsx';
 import BoardInstallingDialog from '../../containers/board-installing-dialog.jsx';
 import BoardUploaderOverlay from '../../containers/board-uploader-overlay.jsx';
+import {isAppDebug} from '../../lib/app-debug.js';
+import {setDebugPanelVisible, setDebugPanelTab} from '../../reducers/debug-panel';
 
 import collectMetadata from '../../lib/collect-metadata';
 
@@ -181,6 +183,7 @@ class MenuBar extends React.Component {
             'handleClickShare',
             'handleUploadClick',
             'handleCloseOverlay',
+            'handleDebugClick',
             'handleKeyPress',
             'handleRestoreOption',
             'restoreOptionMessage'
@@ -352,6 +355,13 @@ class MenuBar extends React.Component {
             generatedCode: ''
         });
     };
+
+    handleDebugClick = () => {
+        if (!isAppDebug()) return;
+        this.props.onRequestCloseBoard();
+        this.props.onOpenDebugPanel();
+    };
+
     restoreOptionMessage (deletedItem) {
         switch (deletedItem) {
         case 'Sprite':
@@ -668,6 +678,15 @@ class MenuBar extends React.Component {
                                                 />
                                             </MenuItem>
                                             )}
+                                            {isAppDebug() && (
+                                            <MenuItem onClick={this.handleDebugClick}>
+                                                <FormattedMessage
+                                                    defaultMessage="Debug (Log / Serial)"
+                                                    description="Open debug log and serial monitor (dev only)"
+                                                    id="gui.menuBar.boardDebug"
+                                                />
+                                            </MenuItem>
+                                            )}
                                         </MenuSection>
                                     </div>
                                 )}</Board>
@@ -771,6 +790,7 @@ MenuBar.propTypes = {
     onClickSaveAsCopy: PropTypes.func,
     onClickSettings: PropTypes.func,
     onLogOut: PropTypes.func,
+    onOpenDebugPanel: PropTypes.func,
     onOpenRegistration: PropTypes.func,
     onOpenTipLibrary: PropTypes.func,
     onProjectTelemetryEvent: PropTypes.func,
@@ -851,6 +871,10 @@ const mapDispatchToProps = dispatch => ({
     onRequestCloseAbout: () => dispatch(closeAboutMenu()),
     onClickSettings: () => dispatch(openSettingsMenu()),
     onRequestCloseSettings: () => dispatch(closeSettingsMenu()),
+    onOpenDebugPanel: () => {
+        dispatch(setDebugPanelTab('log'));
+        dispatch(setDebugPanelVisible(true));
+    },
     onClickNew: needSave => dispatch(requestNewProject(needSave)),
     onClickSave: () => dispatch(manualUpdateProject()),
     onClickSaveAsCopy: () => dispatch(saveProjectAsCopy()),

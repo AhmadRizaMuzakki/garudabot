@@ -1,15 +1,12 @@
 /**
  * Klien BLE ESP32 untuk Connect + upload program lewat Bluetooth.
  *
- * Transport: Scratch Link WebSocket lokal (bukan Web Bluetooth browser).
+ * Transport: BLE native via Tauri (btleplug) — tanpa Scratch Link.
  * Digunakan dialog Connect (scan/pair) dan board-uploader (BLE OTA).
- * Filter discover: service UUID — nama device di Windows sering kosong.
  */
 
-import ScratchLinkSocket from './scratch-link-socket.js';
 import {
     GARUDABOT_BLE,
-    DISCOVER_OPTIONS,
     bytesToBase64,
     decodeFirmwareBase64,
     decodeNotifyMessage,
@@ -23,29 +20,40 @@ export {GARUDABOT_BLE, peripheralDisplayName};
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const getTauri = () => {
+    if (typeof window === 'undefined') return null;
+    return window.__TAURI__ || null;
+};
+
+const invoke = (cmd, args) => {
+    const tauri = getTauri();
+    if (!tauri || !tauri.core || typeof tauri.core.invoke !== 'function') {
+        return Promise.reject(new Error(
+            'BLE native hanya tersedia di aplikasi desktop Garudabot (bukan browser).'
+        ));
+    }
+    return tauri.core.invoke(cmd, args || {});
+};
+
 export default class Esp32BleLink {
     constructor ({onPeripheral, onError, onOpen, onClose, onNotify} = {}) {
         this._onPeripheral = onPeripheral || (() => {});
         this._onError = onError || (() => {});
         this._onNotify = onNotify || (() => {});
+        this._onOpen = onOpen || (() => {});
+        this._onClose = onClose || (() => {});
         this._peripherals = {};
         this._notifyWaiters = [];
-
-        this._socket = new ScratchLinkSocket('BLE', {
-            onError: err => this._onError(err),
-            onOpen: onOpen || (() => {}),
-            onClose: () => {
-                if (onClose) onClose();
-            },
-            onNotification: (method, params) => this._onSocketNotification(method, params)
-        });
+        this._unlistenPeripheral = null;
+        this._unlistenNotify = null;
+        this._opened = false;
+        this._connectedId = null;
     }
 
     _ingestPeripheral (params) {
         if (!params || params.peripheralId === undefined || params.peripheralId === null) {
             return;
         }
-        // rawName = apa yang dikirim OS; name = label tampilan sementara.
         const rawName = params.name ? String(params.name).trim() : '';
         const normalized = {
             ...params,
@@ -56,152 +64,246 @@ export default class Esp32BleLink {
         this._onPeripheral(normalized, this.getPeripherals());
     }
 
+    async _ensureListeners () {
+        const tauri = getTauri();
+        if (!tauri || !tauri.event || typeof tauri.event.listen !== 'function') {
+            throw new Error('Tauri event API tidak tersedia.');
+        }
+        if (!this._unlistenPeripheral) {
+            this._unlistenPeripheral = await tauri.event.listen(
+                'ble-native-peripheral',
+                event => this._ingestPeripheral(event.payload)
+            );
+        }
+        if (!this._unlistenNotify) {
+            this._unlistenNotify = await tauri.event.listen(
+                'ble-native-notify',
+                event => this._onNotifyEvent(event.payload)
+            );
+        }
+    }
+
+    _onNotifyEvent (params) {
+        const payload = params || {};
+        const decoded = decodeNotifyMessage(payload.message, payload.encoding);
+        if (decoded == null || decoded === '') return;
+        this._onNotify(decoded, payload);
+        const stillWaiting = [];
+        for (const waiter of this._notifyWaiters) {
+            let matched = false;
+            try {
+                matched = waiter.predicate(decoded, payload);
+            } catch (e) {
+                matched = false;
+            }
+            if (matched) {
+                clearTimeout(waiter.timer);
+                waiter.resolve(decoded);
+            } else {
+                stillWaiting.push(waiter);
+            }
+        }
+        this._notifyWaiters = stillWaiting;
+    }
+
     open () {
-        return this._socket.open();
+        return this.openAsync();
+    }
+
+    async openAsync () {
+        await this._ensureListeners();
+        this._opened = true;
+        this._onOpen();
+        return true;
     }
 
     close () {
         this.closeAsync().catch(() => {});
     }
 
-    async closeAsync () {
-        this._notifyWaiters.forEach(w => w.reject(new Error('BLE session closed')));
+    /**
+     * Lepas listener UI saja — koneksi BLE native di Rust tetap hidup
+     * (setelah Connect, sebelum Live Mode).
+     */
+    async detach () {
+        this._notifyWaiters.forEach(w => w.reject(new Error('BLE session detached')));
         this._notifyWaiters = [];
         this._peripherals = {};
-        this._socket.close();
-        // Bebaskan sesi Rust bridge jika pernah terbuka.
-        try {
-            if (window.__TAURI__ && window.__TAURI__.core) {
-                await window.__TAURI__.core.invoke('ble_link_close');
-            }
-        } catch (e) { /* ignore */ }
+        this._opened = false;
+        if (this._unlistenPeripheral) {
+            try { this._unlistenPeripheral(); } catch (e) { /* ignore */ }
+            this._unlistenPeripheral = null;
+        }
+        if (this._unlistenNotify) {
+            try { this._unlistenNotify(); } catch (e) { /* ignore */ }
+            this._unlistenNotify = null;
+        }
     }
 
-    /**
-     * Scan Scratch Link sampai ketemu device atau timeout.
-     * @param {number} timeoutMs
-     */
-    async scan (timeoutMs = 12000) {
-        this._peripherals = {};
-        // Tutup bridge Rust dulu agar Scratch Link tidak “penuh”.
+    async closeAsync () {
+        await this.detach();
+        this._connectedId = null;
         try {
-            if (window.__TAURI__ && window.__TAURI__.core) {
-                await window.__TAURI__.core.invoke('ble_link_close');
-                await delay(600);
-            }
+            await invoke('ble_native_close');
         } catch (e) { /* ignore */ }
+        this._onClose();
+    }
 
-        await this._socket.open();
-        await this._socket.request('discover', DISCOVER_OPTIONS);
+    getPeripherals () {
+        return {...this._peripherals};
+    }
 
-        const started = Date.now();
-        while (Date.now() - started < timeoutMs) {
-            if (Object.keys(this._peripherals).length > 0) {
-                await delay(800);
-                return this.getPeripherals();
-            }
-            await delay(250);
-        }
+    async discover (timeoutMs = 12000, preferredName = '', options = {}) {
+        this._peripherals = {};
+        await this.openAsync();
+        const preferred = String(preferredName || '').trim();
+        const preserve = Boolean(options.preserveConnected);
+        const result = await invoke('ble_native_scan', {
+            timeoutMs: Math.min(Math.max(timeoutMs, 2000), 30000),
+            preferredName: preferred || null,
+            preserveConnected: preserve
+        });
+        const devices = (result && result.devices) || [];
+        devices.forEach(d => this._ingestPeripheral(d));
         return this.getPeripherals();
     }
 
-    /**
-     * Scratch Link butuh discover di sesi WebSocket yang sama sebelum connect.
-     * @param {string|number} peripheralId id dari sesi scan sebelumnya (boleh beda tipe)
-     * @param {number} timeoutMs
-     * @returns {Promise<string|number>} peripheralId asli dari discover (tipe yang Scratch Link kenal)
-     */
-    async discoverForConnect (peripheralId, timeoutMs = 15000) {
+    async scan (timeoutMs = 12000, preferredName = '', options = {}) {
+        return this.discover(timeoutMs, preferredName, options);
+    }
+
+    async getConnectionStatus () {
+        try {
+            return await invoke('ble_native_status');
+        } catch (e) {
+            return {connected: false};
+        }
+    }
+
+    _pickPeripheralId (targetKey, preferred) {
+        if (this._peripherals[targetKey]) {
+            return this._peripherals[targetKey].peripheralId;
+        }
+        const all = Object.values(this._peripherals);
+        if (preferred) {
+            const pref = preferred.toLowerCase();
+            const match = all.find(p => {
+                const n = String(p.rawName || p.name || '').toLowerCase();
+                return n === pref || n.includes(pref) || pref.includes(n);
+            });
+            if (match) return match.peripheralId;
+        }
+        if (all.length === 1) {
+            return all[0].peripheralId;
+        }
+        // ID Windows sering berubah antar scan — ambil yang paling baru kalau ada.
+        if (all.length > 0) {
+            return all[0].peripheralId;
+        }
+        return null;
+    }
+
+    async discoverForConnect (peripheralId, timeoutMs = 15000, preferredName = '') {
         const targetKey = String(peripheralId);
+        const preferred = String(preferredName || '').trim();
+        await this.openAsync();
+
+        // Sudah nyambung ke board mana pun? Jangan close+scan.
+        // Windows sering ganti peripheralId antar sesi — reuse native yang hidup.
+        try {
+            const status = await this.getConnectionStatus();
+            if (status && status.connected) {
+                const currentId = String(status.peripheralId || '');
+                const currentName = String(status.name || '');
+                if (currentId) {
+                    this._ingestPeripheral({
+                        peripheralId: currentId,
+                        name: currentName || preferred || currentId
+                    });
+                    return currentId;
+                }
+            }
+        } catch (e) { /* lanjut scan */ }
+
         this._peripherals = {};
 
         try {
-            if (window.__TAURI__ && window.__TAURI__.core) {
-                await window.__TAURI__.core.invoke('ble_link_close');
-                await delay(400);
-            }
+            await invoke('ble_native_close');
+            await delay(150);
         } catch (e) { /* ignore */ }
 
-        // Tutup socket lama supaya session Scratch Link bersih.
-        this._socket.close();
-        await delay(300);
-        await this._socket.open();
-        await this._socket.request('discover', DISCOVER_OPTIONS);
+        const scanPromise = invoke('ble_native_scan', {
+            timeoutMs: Math.min(timeoutMs, 14000),
+            preferredName: preferred || null,
+            preserveConnected: false
+        }).then(result => {
+            const devices = (result && result.devices) || [];
+            // Wajib ingest hasil Rust — event saja tidak cukup di Windows.
+            devices.forEach(d => this._ingestPeripheral(d));
+            return result;
+        });
 
         const started = Date.now();
         while (Date.now() - started < timeoutMs) {
-            const exact = this._peripherals[targetKey];
-            if (exact) {
-                return exact.peripheralId;
-            }
-            const keys = Object.keys(this._peripherals);
-            // Satu device saja setelah ~2s — pakai itu (ID Windows kadang berubah antar scan).
-            if (keys.length === 1 && Date.now() - started > 2000) {
-                return this._peripherals[keys[0]].peripheralId;
+            const picked = this._pickPeripheralId(targetKey, preferred);
+            if (picked) {
+                try { await scanPromise; } catch (e) { /* ignore */ }
+                return this._pickPeripheralId(targetKey, preferred) || picked;
             }
             await delay(250);
         }
 
+        try {
+            await scanPromise;
+        } catch (e) { /* ignore */ }
+
+        const resolved = this._pickPeripheralId(targetKey, preferred);
+        if (resolved) return resolved;
+
         throw new Error(
-            `Board BLE ${targetKey} tidak ditemukan di Scratch Link. ` +
-            'Pastikan board menyala, Scratch Link jalan, lalu Connect BLE lagi.'
+            'Board BLE tidak ditemukan. Pastikan board menyala & Bluetooth PC aktif, ' +
+            'lalu Search → Connect lagi.'
         );
     }
 
-    async connect (peripheralId) {
-        await this._socket.open();
-        // Pakai nilai asli dari discover (number/string) — string-only sering Invalid Params.
-        await this._socket.request('connect', {peripheralId});
-        try {
-            await this._socket.request('startNotifications', {
-                serviceId: GARUDABOT_BLE.serviceUuid,
-                characteristicId: GARUDABOT_BLE.txUuid
-            });
-        } catch (e) { /* optional */ }
-        return this._peripherals[String(peripheralId)] || {
-            peripheralId,
-            name: GARUDABOT_BLE.deviceName
-        };
+    async connect (peripheralId, preferredName = '') {
+        await this.openAsync();
+        const preferred = String(preferredName || '').trim();
+        const result = await invoke('ble_native_connect', {
+            peripheralId: String(peripheralId),
+            preferredName: preferred || null
+        });
+        this._connectedId = (result && result.peripheralId) || String(peripheralId);
+        return result;
     }
 
-    async writeRaw (bytes, withResponse = true) {
-        await this._socket.request('write', {
-            serviceId: GARUDABOT_BLE.serviceUuid,
-            characteristicId: GARUDABOT_BLE.rxUuid,
-            message: bytesToBase64(bytes),
-            encoding: 'base64',
-            withResponse
+    async writeRaw (bytes, withResponse = false) {
+        const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        await invoke('ble_native_write', {
+            dataBase64: bytesToBase64(data),
+            withResponse: Boolean(withResponse)
         });
     }
 
-    waitForNotify (predicate, timeoutMs = 20000) {
+    waitForNotify (predicate, timeoutMs = 8000) {
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this._notifyWaiters = this._notifyWaiters.filter(w => w !== waiter);
-                reject(new Error('Timeout menunggu respons BLE dari ESP32.'));
-            }, timeoutMs);
             const waiter = {
                 predicate,
-                resolve: value => {
-                    clearTimeout(timer);
-                    resolve(value);
-                },
-                reject: err => {
-                    clearTimeout(timer);
-                    reject(err);
-                }
+                resolve,
+                reject,
+                timer: setTimeout(() => {
+                    this._notifyWaiters = this._notifyWaiters.filter(w => w !== waiter);
+                    reject(new Error('Timeout menunggu respons BLE.'));
+                }, timeoutMs)
             };
             this._notifyWaiters.push(waiter);
         });
     }
 
-    /**
-     * Upload firmware app (*.ino.bin) ke ESP32 lewat BLE OTA.
-     * Wajib discover dulu di sesi Scratch Link yang sama, lalu connect + chunk write.
-     */
     async uploadOta (peripheralId, firmware, options = {}) {
         const onProgress = options.onProgress || (() => {});
         const onStatus = options.onStatus || (() => {});
+        const preferred = String(options.preferredName || '').trim();
         const bytes = typeof firmware === 'string' ?
             decodeFirmwareBase64(firmware) :
             firmware;
@@ -209,7 +311,6 @@ export default class Esp32BleLink {
         if (!bytes || !bytes.length) {
             throw new Error('Firmware kosong.');
         }
-        // Update.begin butuh app image (~1–2MB), bukan merged flash 4MB.
         if (bytes.length > 0x300000) {
             throw new Error(
                 `Firmware terlalu besar untuk BLE OTA (${bytes.length} bytes). ` +
@@ -217,26 +318,27 @@ export default class Esp32BleLink {
             );
         }
 
-        onStatus('Discover BLE (Scratch Link)...');
+        onStatus('Discover BLE...');
         const resolvedId = await this.discoverForConnect(
             peripheralId,
-            options.discoverTimeoutMs || 15000
+            options.discoverTimeoutMs || 15000,
+            preferred
         );
         onStatus(`Connect BLE ${resolvedId}...`);
-        await this.connect(resolvedId);
+        await this.connect(resolvedId, preferred);
         onStatus('Kirim BEGIN OTA...');
 
         const beginAck = this.waitForNotify(
             msg => typeof msg === 'string' && (msg.startsWith('ACK:BEGIN') || msg.startsWith('ERR')),
             15000
         );
-        await this.writeRaw(buildBeginPacket(bytes.length), true);
+        await this.writeRaw(buildBeginPacket(bytes.length), false);
         const beginMsg = await beginAck;
         if (String(beginMsg).startsWith('ERR')) {
             throw new Error(`ESP32 menolak OTA: ${beginMsg}`);
         }
 
-        const chunkSize = GARUDABOT_BLE.chunkSize;
+        const chunkSize = (GARUDABOT_BLE && GARUDABOT_BLE.chunkSize) || 180;
         let sent = 0;
         while (sent < bytes.length) {
             const end = Math.min(sent + chunkSize, bytes.length);
@@ -254,7 +356,7 @@ export default class Esp32BleLink {
             msg => typeof msg === 'string' && (msg === 'OK' || String(msg).startsWith('ERR')),
             30000
         );
-        await this.writeRaw(buildEndPacket(), true);
+        await this.writeRaw(buildEndPacket(), false);
         const endMsg = await endAck;
         if (endMsg !== 'OK') {
             throw new Error(`OTA gagal di ESP32: ${endMsg}`);
@@ -263,35 +365,11 @@ export default class Esp32BleLink {
         return true;
     }
 
-    getPeripherals () {
-        return {...this._peripherals};
-    }
-
-    _handleNotifyPayload (params) {
-        const message = decodeNotifyMessage(params.message, params.encoding);
-        this._onNotify(message);
-        const remaining = [];
-        this._notifyWaiters.forEach(waiter => {
-            try {
-                if (waiter.predicate(message)) {
-                    waiter.resolve(message);
-                } else {
-                    remaining.push(waiter);
-                }
-            } catch (e) {
-                remaining.push(waiter);
-            }
-        });
-        this._notifyWaiters = remaining;
-    }
-
-    _onSocketNotification (method, params) {
-        if (method === 'didDiscoverPeripheral' || method === 'userDidPickPeripheral') {
-            this._ingestPeripheral(params);
-            return;
+    async uploadFirmware (firmwareBase64, options = {}) {
+        const peripheralId = this._connectedId || options.peripheralId;
+        if (!peripheralId) {
+            throw new Error('BLE belum terhubung untuk OTA.');
         }
-        if (method === 'characteristicDidChange') {
-            this._handleNotifyPayload(params || {});
-        }
+        return this.uploadOta(peripheralId, firmwareBase64, options);
     }
 }

@@ -68,12 +68,12 @@ class RaceroRobotsEsp32 {
 
                 {opcode: 'dcMotor', blockType: BlockType.COMMAND, text: 'dc motor [MOTOR] speed [SPEED]', arguments: {
                     MOTOR: {type: ArgumentType.STRING, menu: 'motorMenu', defaultValue: 'M1'},
-                    SPEED: {type: ArgumentType.NUMBER, defaultValue: 100}
+                    SPEED: {type: ArgumentType.SLIDER, defaultValue: 100}
                 }},
                 {opcode: 'dcMotor130', blockType: BlockType.COMMAND, text: '130 DC motor direction pin connected to [DIRPIN] speed pin (PWM) connected to [PWMPIN] speed [SPEED]', arguments: {
                     DIRPIN: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 5},
                     PWMPIN: {type: ArgumentType.NUMBER, menu: 'pwmPinsMenu', defaultValue: 25},
-                    SPEED: {type: ArgumentType.NUMBER, defaultValue: 100}
+                    SPEED: {type: ArgumentType.SLIDER, defaultValue: 100}
                 }},
                 {opcode: 'servoPinAngle', blockType: BlockType.COMMAND, text: 'servo pin [PIN] angle [ANGLE]', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'servoPinsMenu', defaultValue: 13},
@@ -216,15 +216,98 @@ class RaceroRobotsEsp32 {
     }
 
     /**
-     * Memanggil command Tauri (live mode) ke board.
-     * @param {string} name Nama command Tauri.
+     * Memanggil command board (USB Firmata atau BLE Live) dari Live Mode.
+     * @param {string} name Nama command Tauri / BLE live.
      * @param {object} payload Argumen command.
      * @returns {Promise<*>}
      */
     _invoke (name, payload) {
-        const tauri = window.__TAURI__;
-        if (!tauri) return Promise.resolve(null);
-        return tauri.core.invoke(name, payload);
+        const targetOf = () => (typeof window !== 'undefined' ? window.__garudabotConnectedDevice : null);
+
+        const reportError = err => {
+            let error = err instanceof Error ? err : new Error(String(err));
+            const raw = error.message || String(error);
+            if (/FIRMATA:\s*Board is not connected/i.test(raw) || /board is not connected/i.test(raw)) {
+                error = new Error(
+                    'Sesi Live Mode putus.\n\nBoard → Turn Live Mode Off → Turn Live Mode On, tunggu selesai, lalu green flag.'
+                );
+            }
+            console.error('[Live]', name, payload, error);
+            if (typeof window !== 'undefined' && !window.__garudabotLiveErrorShown) {
+                window.__garudabotLiveErrorShown = true;
+                window.alert(
+                    'Green flag jalan, tapi perintah ke board gagal:\n\n' + error.message
+                );
+            }
+            return error;
+        };
+
+        const tryInvoke = () => {
+            const bleLive = typeof window !== 'undefined' ? window.__garudabotBleLive : null;
+            if (bleLive && typeof bleLive.isActive === 'function' && bleLive.isActive()) {
+                return bleLive.invoke(name, payload);
+            }
+            // Fallback: sesi di window setelah HMR
+            const session = typeof window !== 'undefined' ? window.__garudabotBleLiveSession : null;
+            if (session && session.active && typeof session.invoke === 'function') {
+                return session.invoke(name, payload);
+            }
+            // BLE bridge ada tapi sesi mati → tetap lewat invoke (auto-reconnect di dalamnya)
+            if (bleLive && typeof bleLive.invoke === 'function') {
+                const target = targetOf();
+                if (target && String(target).startsWith('ble:')) {
+                    return bleLive.invoke(name, payload);
+                }
+            }
+            const transport = typeof window !== 'undefined' ? window.__garudabotLiveTransport : null;
+            if (transport === 'usb') {
+                const tauri = window.__TAURI__;
+                if (!tauri) {
+                    return Promise.reject(new Error('Live Mode USB belum siap.'));
+                }
+                return tauri.core.invoke(name, payload);
+            }
+            const target = targetOf();
+            if (target && String(target).startsWith('ble:')) {
+                return Promise.reject(new Error(
+                    'Sesi BLE Live belum siap.\n\nTunggu dialog Live Mode selesai, atau Turn Live Mode On lagi.'
+                ));
+            }
+            return Promise.reject(new Error(
+                'Live Mode belum aktif.\n\nBoard → Turn Live Mode On, tunggu selesai, baru green flag.'
+            ));
+        };
+
+        const ensure = typeof window !== 'undefined' ? window.__garudabotEnsureLiveMode : null;
+        const bleLive = typeof window !== 'undefined' ? window.__garudabotBleLive : null;
+        const session = typeof window !== 'undefined' ? window.__garudabotBleLiveSession : null;
+        const alreadyLive = (bleLive && bleLive.isActive && bleLive.isActive()) ||
+            (session && session.active) ||
+            (typeof window !== 'undefined' && window.__garudabotLiveTransport === 'usb');
+
+        if (alreadyLive) {
+            return tryInvoke().catch(err => {
+                // Sesi putus di tengah jalan → reconnect lalu coba lagi.
+                if (typeof ensure === 'function') {
+                    return ensure()
+                        .then(() => tryInvoke())
+                        .catch(err2 => Promise.reject(reportError(err2)));
+                }
+                return Promise.reject(reportError(err));
+            });
+        }
+        if (typeof ensure === 'function') {
+            return ensure()
+                .then(() => tryInvoke())
+                .catch(err => Promise.reject(reportError(err)));
+        }
+        // Fallback terakhir: jangan bilang "connect saja" kalau menu Live On.
+        const liveOn = typeof window !== 'undefined' && window.__garudabotLiveModeOn;
+        return Promise.reject(reportError(new Error(
+            liveOn ?
+                'Menu Live Mode On, tapi sesi putus.\n\nTurn Live Mode Off → On lagi, tunggu dialog hilang, lalu green flag.' :
+                'Live Mode belum aktif.\n\nBoard → Turn Live Mode On, tunggu selesai, baru green flag.'
+        )));
     }
 
     /** Hat block: titik mulai Generate Code. */
@@ -256,23 +339,25 @@ class RaceroRobotsEsp32 {
 
     // --- Motor ---
 
-    /** Kontrol DC motor M1/M2 (dual-PWM IN1/IN2, harus sama dengan WeELFESP32Motor.h). */
+    /**
+     * Kontrol DC motor M1/M2.
+     * Port silk: M1 = GPIO19/21, M2 = GPIO16/17 (16/17 terbukti = terminal M2).
+     */
     dcMotor (args) {
         const motor = String(args.MOTOR);
         const speed = Number(args.SPEED);
         const map = {
-            M1: {in1: 21, in2: 19},
-            M2: {in1: 17, in2: 16}
+            M1: {in1: 19, in2: 21},
+            M2: {in1: 16, in2: 17}
         };
         const pins = map[motor] || map.M1;
-        // Nilai blok berskala persen, sedangkan pin_pwm_write memakai duty 0..255.
-        const percent = Math.max(0, Math.min(100, Math.abs(Math.trunc(speed))));
-        const pwm = Math.round((percent * 255) / 100);
-        // Pin yang tidak dipakai harus ditarik ke 0 lebih dulu supaya H-bridge
-        // tidak sempat mendapat dua sisi aktif saat arah berubah.
-        const [active, idle] = speed >= 0 ? [pins.in1, pins.in2] : [pins.in2, pins.in1];
-        return this._invoke('pin_pwm_write', {pin: idle, value: 0})
-            .then(() => this._invoke('pin_pwm_write', {pin: active, value: pwm}));
+        const clamped = Math.max(-100, Math.min(100, Math.trunc(speed)));
+
+        return this._invoke('pin_motor_dual', {
+            pin1: pins.in1,
+            pin2: pins.in2,
+            speed: clamped
+        });
     }
 
     dcMotor130 (args) {

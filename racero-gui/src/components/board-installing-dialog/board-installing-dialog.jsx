@@ -15,29 +15,50 @@ const messages = defineMessages({
         id: 'gui.boardInstalling.label',
         defaultMessage: 'Turning On Live Mode',
         description: 'Accessibility label for the board selection modal'
+    },
+    cancel: {
+        id: 'gui.boardInstalling.cancel',
+        defaultMessage: 'Cancel',
+        description: 'Cancel live mode setup'
     }
 });
 
 const BoardInstallingDialogComponent = props => {
-    const { intl } = props;
+    const { intl, statusText, onCancel } = props;
     return (<Modal
         className={styles.modalContent}
         contentLabel={intl.formatMessage(messages.label)}
         id='boardConnectionDialog'
-        onRequestClose={() => {}}
+        onRequestClose={onCancel || (() => {})}
         title={intl.formatMessage(messages.title)}
     >
         <div className={`${styles.label} ${styles.scanning}`}>
-            <FormattedMessage
-                defaultMessage="Please wait..."
-                description="Board turn live mode on."
-                id="gui.boardInstalling.installing"
-            />
+            {statusText ? statusText : (
+                <FormattedMessage
+                    defaultMessage="Please wait… This can take 1–3 minutes on Bluetooth."
+                    description="Board turn live mode on."
+                    id="gui.boardInstalling.installing"
+                />
+            )}
         </div>
+        {typeof onCancel === 'function' && (
+            <div className={styles.actions}>
+                <button
+                    type="button"
+                    className={styles.cancelButton}
+                    onClick={onCancel}
+                >
+                    {intl.formatMessage(messages.cancel)}
+                </button>
+            </div>
+        )}
     </Modal>);
 };
 
 BoardInstallingDialogComponent.propTypes = {
+    intl: PropTypes.object,
+    statusText: PropTypes.string,
+    onCancel: PropTypes.func
 };
 
 export default injectIntl(BoardInstallingDialogComponent);

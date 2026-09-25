@@ -22,6 +22,10 @@ class Controls extends React.Component {
             if (!this.props.isStarted) {
                 this.props.vm.start();
             }
+            // Reset flag alert error Live Mode tiap kali green flag.
+            if (typeof window !== 'undefined') {
+                window.__garudabotLiveErrorShown = false;
+            }
             this.props.vm.greenFlag();
         }
     }
@@ -57,7 +61,7 @@ Controls.propTypes = {
 };
 
 const mapStateToProps = state => ({
-    isStarted: state.raceroGui.vmStatus.running,
+    isStarted: state.raceroGui.vmStatus.started,
     projectRunning: state.raceroGui.vmStatus.running,
     turbo: state.raceroGui.vmStatus.turbo
 });

@@ -22,8 +22,9 @@
  */
 #include <Arduino.h>
 
-const int IN1 = 21; // M1, roda kiri
-const int IN2 = 19;
+// Port M1 = GPIO19 / GPIO21. Untuk M2: IN1=16, IN2=17.
+const int IN1 = 19;
+const int IN2 = 21;
 const int SPEED = 200;
 
 void bebas() {

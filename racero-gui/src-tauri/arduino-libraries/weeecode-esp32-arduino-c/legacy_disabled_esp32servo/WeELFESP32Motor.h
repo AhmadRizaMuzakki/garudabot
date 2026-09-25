@@ -1,11 +1,6 @@
 /**
- * ELF ESP32 (bukan Mini/Pro) — driver motor dual-PWM (IN1/IN2).
- *
- * Tata letak pinnya berbeda dari WeESP32Mini maupun WeESP32Pro, jadi jangan
- * disalin dari kedua header itu. Angka di bawah didapat dari penyapuan GPIO
- * satu per satu pada board fisik:
- *   M1 (roda kiri) : GPIO21 + GPIO19
- *   M2 (roda kanan): GPIO17 + GPIO16
+ * ELF ESP32 dual-PWM motor (IN1/IN2). Pin map dari board fisik ELF (bukan Mini/Pro).
+ * +speed = maju; M2 pakai reverse karena wiring fisik terbalik.
  */
 #ifndef WeELF_ESP32_MOTOR_H
 #define WeELF_ESP32_MOTOR_H
@@ -14,22 +9,24 @@
 
 #define WE_ELF_M1_IN1 21
 #define WE_ELF_M1_IN2 19
-#define WE_ELF_M2_IN1 17
-#define WE_ELF_M2_IN2 16
+#define WE_ELF_M2_IN1 16
+#define WE_ELF_M2_IN2 17
+#define WE_ELF_M2_REVERSE true
 
-// 20 kHz berada di atas ambang pendengaran, jadi motor tidak mendengung seperti
-// pada 1 kHz bawaan analogWrite.
 #define WE_ELF_PWM_FREQ 20000
 #define WE_ELF_PWM_BITS 8
-
-// Di bawah nilai ini motor umumnya hanya bergetar tanpa berputar, sehingga speed
-// kecil dinaikkan ke ambang ini agar perintah tetap terasa.
+/** Duty minimum agar motor benar-benar berputar (bukan hanya getar). */
 #define WE_ELF_MIN_DUTY 60
+/**
+ * Firmata SysEx motor dual: [pin1][pin2][speed+100 low7][speed+100 high7]
+ * Harus di rentang user 0x60–0x68 — JANGAN 0x6D (itu PIN_STATE_QUERY Firmata).
+ */
+#define WE_ELF_FIRMATA_MOTOR_DUAL 0x63
 
 class WeELFMotor {
 public:
-    WeELFMotor(uint8_t in1, uint8_t in2)
-        : _in1(in1), _in2(in2), _ready(false) {}
+    WeELFMotor(uint8_t in1, uint8_t in2, bool reverse = false)
+        : _in1(in1), _in2(in2), _reverse(reverse), _ready(false) {}
 
     void begin() {
         if (_ready) {
@@ -41,9 +38,7 @@ public:
         stop();
     }
 
-    // Blok "dc motor" memakai skala persen (-100..100), sementara LEDC memakai
-    // duty 0..255. Tanpa konversi ini speed 100 hanya menghasilkan 39% duty dan
-    // roda sering tidak kuat berputar.
+    /** percent -100..100 → LEDC duty 0..255 (bukan nilai mentah percent). */
     void runPercent(int percent) {
         if (percent > 100) {
             percent = 100;
@@ -56,6 +51,9 @@ public:
 
     void run(int speed) {
         begin();
+        if (_reverse) {
+            speed = -speed;
+        }
         if (speed > 255) {
             speed = 255;
         }
@@ -88,8 +86,7 @@ public:
     }
 
 private:
-    // Mencampur analogWrite() dan digitalWrite() pada pin yang sama tidak andal di
-    // ESP32 core 3.x, jadi kedua pin dikunci sebagai kanal LEDC sejak begin().
+    // ESP32 core 3.x: jangan campur digitalWrite + LEDC pada pin yang sama.
     static void attachPwm(uint8_t pin) {
         pinMode(pin, OUTPUT);
         digitalWrite(pin, LOW);
@@ -111,7 +108,36 @@ private:
 
     uint8_t _in1;
     uint8_t _in2;
+    bool _reverse;
     bool _ready;
 };
+
+/**
+ * Live/Firmata: route M1/M2 ke instance tetap; pin lain → WeELFMotor sementara.
+ * Satu implementasi untuk BLE OTA + StandardFirmata.
+ */
+inline void WeELF_driveByPins(uint8_t in1, uint8_t in2, int speedPct) {
+    static WeELFMotor m1(WE_ELF_M1_IN1, WE_ELF_M1_IN2);
+    static WeELFMotor m2(WE_ELF_M2_IN1, WE_ELF_M2_IN2, WE_ELF_M2_REVERSE);
+
+    if (speedPct > 100) {
+        speedPct = 100;
+    }
+    if (speedPct < -100) {
+        speedPct = -100;
+    }
+
+    if (in1 == WE_ELF_M1_IN1 && in2 == WE_ELF_M1_IN2) {
+        m1.runPercent(speedPct);
+        return;
+    }
+    if (in1 == WE_ELF_M2_IN1 && in2 == WE_ELF_M2_IN2) {
+        m2.runPercent(speedPct);
+        return;
+    }
+
+    WeELFMotor tmp(in1, in2);
+    tmp.runPercent(speedPct);
+}
 
 #endif

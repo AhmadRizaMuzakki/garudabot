@@ -77,6 +77,13 @@ const ArgumentTypeMap = (() => {
             fieldName: 'NUM'
         }
     };
+    map[ArgumentType.SLIDER] = {
+        shadow: {
+            // Motor: Range -100 - 100 (maju / mundur) + slider
+            type: 'math_slider_motor',
+            fieldName: 'NUM'
+        }
+    };
     map[ArgumentType.STRING] = {
         shadow: {
             type: 'text',

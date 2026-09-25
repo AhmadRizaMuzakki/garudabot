@@ -56,7 +56,14 @@ CLOSURE_COMPILER = REMOTE_COMPILER
 CLOSURE_DIR_NPM = "node_modules"
 CLOSURE_ROOT_NPM = os.path.join("node_modules")
 CLOSURE_LIBRARY_NPM = "google-closure-library"
-CLOSURE_COMPILER_NPM = ("google-closure-compiler.cmd" if os.name == "nt" else "google-closure-compiler")
+# Prefer full path under node_modules/.bin so CreateProcess works when PATH
+# does not include the npm shim (common on Windows + Python).
+_CLOSURE_BIN = os.path.join("node_modules", ".bin",
+    "google-closure-compiler.cmd" if os.name == "nt" else "google-closure-compiler")
+CLOSURE_COMPILER_NPM = (
+    os.path.abspath(_CLOSURE_BIN) if os.path.isfile(_CLOSURE_BIN)
+    else ("google-closure-compiler.cmd" if os.name == "nt" else "google-closure-compiler")
+)
 
 def import_path(fullpath):
   """Import a file with full path specification.

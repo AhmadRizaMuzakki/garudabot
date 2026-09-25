@@ -8,6 +8,94 @@
 
 #if defined(ESP32)
   #include <ESP32Servo.h>
+  #include <GarudabotBleOta.h>
+  #define ESP32_LIVE_PWM_FREQ 20000
+  #define ESP32_LIVE_PWM_BITS 8
+  #define MOTOR_DUAL 0x63
+  // Port M1 = 19/21, port M2 = 16/17 (uji: 16/17 = terminal M2).
+  #define ELF_M1_IN1 19
+  #define ELF_M1_IN2 21
+  #define ELF_M2_IN1 16
+  #define ELF_M2_IN2 17
+  #define ELF_MOTOR_MAX_DUTY 220
+
+  static bool elfPwmOn[40] = {false};
+
+  static void esp32PwmAttach(byte pin) {
+      if (pin >= 40) return;
+      pinMode(pin, OUTPUT);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+      if (elfPwmOn[pin]) {
+          ledcDetach(pin);
+      }
+      ledcAttach(pin, ESP32_LIVE_PWM_FREQ, ESP32_LIVE_PWM_BITS);
+#else
+      analogWriteFrequency(ESP32_LIVE_PWM_FREQ);
+      analogWriteResolution(ESP32_LIVE_PWM_BITS);
+#endif
+      elfPwmOn[pin] = true;
+  }
+
+  static void esp32PwmWrite(byte pin, int value) {
+      if (value < 0) value = 0;
+      if (value > 255) value = 255;
+      esp32PwmAttach(pin);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+      ledcWrite(pin, value);
+#else
+      analogWrite(pin, value);
+#endif
+  }
+
+  static void esp32MotorIdle(byte pin) {
+      if (pin >= 40) return;
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+      if (elfPwmOn[pin]) {
+          ledcWrite(pin, 0);
+          ledcDetach(pin);
+          elfPwmOn[pin] = false;
+      }
+#endif
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, LOW);
+  }
+
+  static void esp32MotorDrive(byte pin, int duty) {
+      if (duty >= 250) {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+          if (elfPwmOn[pin]) {
+              ledcDetach(pin);
+              elfPwmOn[pin] = false;
+          }
+#endif
+          pinMode(pin, OUTPUT);
+          digitalWrite(pin, HIGH);
+          return;
+      }
+      esp32PwmWrite(pin, duty);
+  }
+
+  /** Motor dual-PWM (tanpa WeELFESP32Motor). */
+  static void esp32MotorDual(uint8_t in1, uint8_t in2, int speedPct) {
+      if (speedPct > 100) speedPct = 100;
+      if (speedPct < -100) speedPct = -100;
+      if (speedPct == 0) {
+          esp32MotorIdle(in1);
+          esp32MotorIdle(in2);
+          return;
+      }
+      int mag = speedPct < 0 ? -speedPct : speedPct;
+      int duty = (mag * ELF_MOTOR_MAX_DUTY) / 100;
+      if (duty < 40) duty = 40;
+      if (duty > 255) duty = 255;
+      if (speedPct > 0) {
+          esp32MotorIdle(in2);
+          esp32MotorDrive(in1, duty);
+      } else {
+          esp32MotorIdle(in1);
+          esp32MotorDrive(in2, duty);
+      }
+  }
 #else
   #include <Servo.h>
 #endif
@@ -25,7 +113,9 @@ Servo servos[MAX_SERVOS];
 byte servoPinMap[TOTAL_PINS];
 byte servoCount = 0;
 
-// --- Protocol Constants (safe user range: 0x60–0x7F) ---
+// --- Protocol Constants (safe user range: 0x60–0x68; 0x69+ reserved Firmata) ---
+// DISPLAY_INIT 0x60, ULTRASONIC 0x61, TONE 0x62, MOTOR_DUAL 0x63
+// JANGAN 0x6D — itu PIN_STATE_QUERY → duplicate case value.
 #define DISPLAY_INIT        0x60
 #define ULTRASONIC_READ     0x61
 #define TONE_PLAY           0x62
@@ -71,8 +161,13 @@ void setPinModeCallback(byte pin, int mode) {
     }
     else if (mode == PIN_MODE_PWM) {
         Firmata.setPinMode(pin, PIN_MODE_PWM);
+#if defined(ESP32)
+        esp32PwmAttach(pin);
+        esp32PwmWrite(pin, 0);
+#else
         pinMode(pin, OUTPUT);
         analogWrite(pin, 0);
+#endif
         Firmata.setPinState(pin, 0);
     }
     else if (mode == PIN_MODE_OUTPUT) {
@@ -110,7 +205,11 @@ void analogWriteCallback(byte pin, int value) {
                 }
                 break;
             case PIN_MODE_PWM:
+#if defined(ESP32)
+                esp32PwmWrite(pin, value);
+#else
                 analogWrite(pin, value);
+#endif
                 Firmata.setPinState(pin, value);
                 break;
         }
@@ -135,11 +234,21 @@ void sysexCallback(byte command, byte argc, byte *argv) {
                     Firmata.write(PIN_MODE_ANALOG);
                     Firmata.write(10); // 10-bit resolution
                 }
-                if (IS_PIN_PWM(pin)) {
+                // ESP32: LEDC PWM di GPIO digital (motor ELF M1=19/21, M2=16/17).
+                // Boards.h sering tidak menandai pin >15 sebagai IS_PIN_PWM.
+                if (IS_PIN_PWM(pin)
+#if defined(ESP32)
+                    || IS_PIN_DIGITAL(pin)
+#endif
+                ) {
                     Firmata.write(PIN_MODE_PWM);
                     Firmata.write(8); // 8-bit resolution
                 }
-                if (IS_PIN_SERVO(pin)) {
+                if (IS_PIN_SERVO(pin)
+#if defined(ESP32)
+                    || IS_PIN_DIGITAL(pin)
+#endif
+                ) {
                     Firmata.write(PIN_MODE_SERVO);
                     Firmata.write(14); // 14-bit resolution
                 }
@@ -250,6 +359,27 @@ void sysexCallback(byte command, byte argc, byte *argv) {
                 Firmata.setPinMode(pin, PIN_MODE_SERVO);
             }
             break;
+
+        case EXTENDED_ANALOG:
+            // Pin PWM/servo > 15 (motor ELF 16/17/19/21) — ANALOG_MESSAGE biasa tidak cukup.
+            if (argc > 1) {
+                int val = argv[1];
+                if (argc > 2) val |= (argv[2] << 7);
+                if (argc > 3) val |= (argv[3] << 14);
+                analogWriteCallback(argv[0], val);
+            }
+            break;
+
+#if defined(ESP32)
+        case MOTOR_DUAL:
+            if (argc >= 4) {
+                uint8_t in1 = argv[0];
+                uint8_t in2 = argv[1];
+                int encoded = (argv[2] & 0x7F) | ((argv[3] & 0x7F) << 7);
+                esp32MotorDual(in1, in2, encoded - 100);
+            }
+            break;
+#endif
     }
 }
 
@@ -327,12 +457,21 @@ void setup() {
     while (!Serial && (millis() - serialTimeout) < 3000) { ; }
 
     systemResetCallback();
+
+#if defined(ESP32)
+    // BLE Live Mode: Nordic UART + CMD_LIVE_* (Serial Firmata tetap aktif di USB).
+    GarudabotBleOta::begin("Garudabot", false);
+#endif
 }
 
 void loop() {
     while (Firmata.available()) {
         Firmata.processInput();
     }
+
+#if defined(ESP32)
+    GarudabotBleOta::loop();
+#endif
 
     currentMillis = millis();
     if (currentMillis - previousMillis > samplingInterval) {

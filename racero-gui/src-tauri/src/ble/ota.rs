@@ -1,16 +1,17 @@
 //! ESP32 BLE OTA — upload program lewat Bluetooth (mengganti SoftAP WiFi OTA).
 //!
 //! Alur:
-//! 1. Target port `ble:<peripheralId>` dari dialog Connect (Scratch Link).
+//! 1. Target port `ble:<peripheralId>` dari dialog Connect (BLE native).
 //! 2. Inject `GarudabotBleOta` ke sketch agar board advertise + terima firmware.
 //! 3. Compile saja (tanpa `arduino-cli upload`) → ambil `*.ino.bin` (bukan merged).
 //! 4. Kirim JSON `{ mode, peripheralId, firmwareBase64 }` ke frontend;
-//!    frontend yang menulis chunk lewat Scratch Link WebSocket.
+//!    frontend yang menulis chunk lewat BLE native (btleplug).
 //!
 //! Protocol (harus cocok dengan firmware `GarudabotBleOta` + JS `lib/ble/protocol.js`):
 //! - CMD_BEGIN 0x01 + u32 LE size
 //! - CMD_DATA  0x02 + payload bytes
 //! - CMD_END   0x03
+//! - CMD_LIVE_* 0x10–0x18 untuk Live Mode pin I/O (green flag)
 //! Status notify: ACK:BEGIN | N:<bytes> | OK | ERR:...
 
 use std::fs;
@@ -27,7 +28,7 @@ const LOOP_CALL: &str = "GarudabotBleOta::loop();";
 const DEFAULT_BLE_NAME: &str = "Garudabot";
 const BLE_NAME_MAX_LEN: usize = 15;
 
-/// Port virtual dari UI: `ble:<ScratchLink peripheralId>` (bukan COM / IP).
+/// Port virtual dari UI: `ble:<peripheralId>` (bukan COM / IP).
 pub(crate) fn is_ble_port(port: &str) -> bool {
     port.starts_with("ble:")
 }
@@ -66,9 +67,11 @@ pub(crate) fn sanitize_ble_device_name(raw: Option<&str>) -> String {
     }
 }
 
-/// Contoh hasil: `GarudabotBleOta::begin("Mobil-01");`
+/// Contoh hasil: `GarudabotBleOta::begin("Mobil-01", false);`
+/// `false` = jangan Serial.begin lagi (sketch/Firmata sudah buka USB) —
+/// Serial.begin ganda sering bikin COM Windows putus-nyambung.
 fn setup_call_for_name(device_name: &str) -> String {
-    format!("GarudabotBleOta::begin(\"{}\");", device_name)
+    format!("GarudabotBleOta::begin(\"{}\", false);", device_name)
 }
 
 /// Sisipkan library OTA BLE ke sketch, dengan nama advertising custom.
@@ -223,7 +226,8 @@ pub(crate) async fn compile_firmware_bin(
     arduino_cli::append_libraries(app, &mut compile_args);
     compile_args.push(sketch_path);
 
-    let compile_code = arduino_cli::run_with_logs(app, compile_args, true).await?;
+    let compile_code =
+        arduino_cli::run_with_logs(app, compile_args, arduino_cli::QuietPhase::Compile).await?;
     if compile_code != 0 {
         return Err(format!("Compile gagal (exit code {}).", compile_code));
     }
@@ -248,7 +252,7 @@ pub(crate) async fn prepare_ble_ota_payload(
     let _ = app.emit(
         "compiler-log",
         format!(
-            "Mode BLE OTA — compile firmware, kirim lewat Scratch Link ke {}.\n",
+            "Mode BLE OTA — compile firmware, kirim lewat BLE native ke {}.\n",
             peripheral_id
         ),
     );
@@ -271,4 +275,55 @@ pub(crate) async fn prepare_ble_ota_payload(
         "firmwareBase64": firmware_b64
     })
     .to_string())
+}
+
+/// Sketch minimal Live Mode BLE (pin I/O realtime + tetap bisa OTA ulang).
+pub(crate) fn live_mode_ble_sketch(device_name: &str) -> String {
+    let ble_name = sanitize_ble_device_name(Some(device_name));
+    format!(
+        r#"#include <GarudabotBleOta.h>
+
+// Live Mode BLE — diganti otomatis saat Turn Live Mode On (Bluetooth).
+// Motor M1/M2: PWM langsung di GarudabotBleOta (tanpa WeELFESP32Motor).
+void setup() {{
+    GarudabotBleOta::begin("{name}", false);
+}}
+
+void loop() {{
+    GarudabotBleOta::loop();
+}}
+"#,
+        name = ble_name
+    )
+}
+
+/// Compile firmware Live Mode untuk OTA BLE (frontend yang mengirim .bin).
+pub(crate) async fn prepare_ble_live_payload(
+    app: &AppHandle,
+    fqbn: &str,
+    peripheral_id: &str,
+    ble_device_name: Option<&str>,
+) -> Result<String, String> {
+    let ble_name = sanitize_ble_device_name(ble_device_name);
+    let sketch_code = live_mode_ble_sketch(&ble_name);
+
+    let sketch_dir = std::env::temp_dir().join("GarudabotBleLive");
+    fs::create_dir_all(&sketch_dir).map_err(|e| e.to_string())?;
+    let sketch_file = sketch_dir.join("GarudabotBleLive.ino");
+    fs::write(&sketch_file, sketch_code).map_err(|e| e.to_string())?;
+
+    let sketch_path = sketch_dir
+        .to_str()
+        .ok_or_else(|| "Path sketch Live BLE tidak valid.".to_string())?
+        .to_string();
+
+    let _ = app.emit(
+        "compiler-log",
+        format!(
+            "Live Mode BLE: compile firmware live (nama \"{}\")...\n",
+            ble_name
+        ),
+    );
+
+    prepare_ble_ota_payload(app, sketch_path, &sketch_dir, fqbn, peripheral_id).await
 }

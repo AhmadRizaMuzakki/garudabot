@@ -157,3 +157,60 @@ Blockly.Blocks['math_angle'] = {
     });
   }
 };
+
+Blockly.Blocks['math_slider'] = {
+  /**
+   * Number with range slider editor (min/max).
+   * Default Range 0 - 100 (motor speed %, dll).
+   * @this Blockly.Block
+   */
+  init: function() {
+    this.jsonInit({
+      "message0": "%1",
+      "args0": [
+        {
+          "type": "field_number",
+          "name": "NUM",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "precision": 1
+        }
+      ],
+      "output": "Number",
+      "outputShape": Blockly.OUTPUT_SHAPE_ROUND,
+      "colour": Blockly.Colours.textField,
+      "colourSecondary": Blockly.Colours.textField,
+      "colourTertiary": Blockly.Colours.textField,
+      "colourQuaternary": Blockly.Colours.textField
+    });
+  }
+};
+
+Blockly.Blocks['math_slider_motor'] = {
+  /**
+   * Motor speed slider: Range -100 - 100 (maju/mundur).
+   * @this Blockly.Block
+   */
+  init: function() {
+    this.jsonInit({
+      "message0": "%1",
+      "args0": [
+        {
+          "type": "field_number",
+          "name": "NUM",
+          "value": 100,
+          "min": -100,
+          "max": 100,
+          "precision": 1
+        }
+      ],
+      "output": "Number",
+      "outputShape": Blockly.OUTPUT_SHAPE_ROUND,
+      "colour": Blockly.Colours.textField,
+      "colourSecondary": Blockly.Colours.textField,
+      "colourTertiary": Blockly.Colours.textField,
+      "colourQuaternary": Blockly.Colours.textField
+    });
+  }
+};

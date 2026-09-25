@@ -16,6 +16,9 @@ class GreenFlagOverlay extends React.Component {
     }
 
     handleClick () {
+        if (typeof window !== 'undefined') {
+            window.__garudabotLiveErrorShown = false;
+        }
         this.props.vm.start();
         this.props.vm.greenFlag();
     }

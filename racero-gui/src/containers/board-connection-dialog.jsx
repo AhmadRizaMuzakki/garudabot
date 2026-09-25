@@ -7,10 +7,13 @@ import { injectIntl, intlShape } from 'react-intl';
 import {
     setConnectingStatus,
     setConnectionDetails,
+    setConnectedStatus,
     setBleDeviceName
 } from '../reducers/board';
 import { boards } from 'racero-boards';
 import Esp32BleLink from '../lib/ble/esp32-ble-link.js';
+import {startBleLive, stopBleLive, isBleLiveActive} from '../lib/ble/ble-live-session.js';
+import {setLiveTransport} from '../lib/live-transport.js';
 import {
     DEFAULT_BLE_DEVICE_NAME,
     saveBleDeviceName,
@@ -23,9 +26,10 @@ import {
 
 import BoardConnectionDialogComponent from '../components/board-connection-dialog/board-connection-dialog.jsx';
 
-// Dialog Connect: ESP32 memakai daftar BLE (Scratch Link) + USB cadangan.
+// Dialog Connect: ESP32 memakai daftar BLE native (btleplug) + USB cadangan.
 // Board lain: USB Serial saja.
-// Setelah pilih Garudabot, target tersimpan sebagai `ble:<peripheralId>` untuk upload.
+// Setelah pilih Garudabot, target tersimpan sebagai `ble:<peripheralId>`
+// untuk Upload Program dan Live Mode BLE.
 
 const isNetworkAddress = value => value.startsWith('net:') || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(value);
 
@@ -48,6 +52,7 @@ class BoardConnectionDialog extends React.Component {
         bindAll(this, [
             'handleConnect',
             'handleCancel',
+            'handleRefreshPorts',
             'handleScanBle',
             'handlePairBle',
             'handleBleNameModeChange',
@@ -63,6 +68,7 @@ class BoardConnectionDialog extends React.Component {
         this.state = {
             ports: [],
             isLoading: false,
+            isRefreshingPorts: false,
             selectedEspPort: '',
             connectionSuccess: null,
             bleDevices: [],
@@ -81,9 +87,25 @@ class BoardConnectionDialog extends React.Component {
         this.connectionSuccessTimer = null;
         this.isUnmounted = false;
         this.bleLink = null;
+        this.portPollTimer = null;
     }
     componentDidMount() {
         // Sinkron ulang antrian + nama flash terakhir (bisa berubah setelah Upload).
+        this.syncBleNameState();
+
+        const tauri = window.__TAURI__;
+        if (!tauri) return;
+
+        tauri.event.listen('ports-updated', this.handlePortWatcherEvent).then(unlistenFn => {
+            this.unlistenPorts = unlistenFn;
+        });
+
+        // Dialog selalu di-mount di menu-bar; refresh nyata saat dibuka (isConnecting).
+        if (this.props.isConnecting) {
+            this.refreshWhenDialogOpens();
+        }
+    }
+    syncBleNameState () {
         const storedBatch = loadStoredBatch();
         this.setState({
             bleBatchNames: storedBatch.names,
@@ -94,52 +116,116 @@ class BoardConnectionDialog extends React.Component {
         if (storedBatch.names.length && storedBatch.index < storedBatch.names.length) {
             this.applyBleName(storedBatch.names[storedBatch.index]);
         }
-
+    }
+    startPortAutoPoll () {
+        this.stopPortAutoPoll();
+        // Poll ringan selama dialog terbuka — colok USB → COM muncul tanpa klik Refresh.
+        // Cocok alur batch: colok → pilih → Upload → cabut → board berikutnya.
+        this.portPollTimer = setInterval(() => {
+            if (this.isUnmounted || !this.props.isConnecting) return;
+            this.handleRefreshPorts({quiet: true});
+        }, 1500);
+    }
+    stopPortAutoPoll () {
+        if (this.portPollTimer) {
+            clearInterval(this.portPollTimer);
+            this.portPollTimer = null;
+        }
+    }
+    refreshWhenDialogOpens () {
+        this.syncBleNameState();
+        this.handleRefreshPorts();
+        this.startPortAutoPoll();
+        if (this.isEsp32Board()) {
+            // Kalau sudah Connect/Live BLE, jangan scan penuh (itu putus sesi).
+            const alreadyBle = String(
+                this.props.connectedDevice ||
+                (typeof window !== 'undefined' ? window.__garudabotConnectedDevice : '') ||
+                ''
+            ).startsWith('ble:');
+            this.handleScanBle({preserveConnected: alreadyBle || isBleLiveActive()});
+        }
+    }
+    handleRefreshPorts (options = {}) {
+        const quiet = Boolean(options.quiet);
         const tauri = window.__TAURI__;
-        if (!tauri) return;
-
-        tauri.event.listen('ports-updated', this.handlePortWatcherEvent).then(unlistenFn => {
-            this.unlistenPorts = unlistenFn;
-        });
-
-        this.setState({isLoading: true});
+        if (!tauri || !tauri.core) return;
+        if (this._portRefreshInFlight) return;
+        this._portRefreshInFlight = true;
+        // Jangan full-screen loading — biarkan panel USB/BLE tetap terlihat.
+        if (!quiet) {
+            this.setState({ isRefreshingPorts: true, isLoading: false });
+        }
         tauri.core.invoke('port_list').then(portsString => {
-            const data = JSON.parse(portsString);
-            this.setState({
-                ports: normalizePorts(data),
-                isLoading: false
-            });
+            if (this.isUnmounted) return;
+            let data = portsString;
+            if (typeof portsString === 'string') {
+                try {
+                    data = JSON.parse(portsString);
+                } catch (err) {
+                    console.error(err);
+                    data = {};
+                }
+            }
+            const next = normalizePorts(data);
+            const prevKey = (this.state.ports || []).map(p => p.address).sort().join('|');
+            const nextKey = next.map(p => p.address).sort().join('|');
+            const patch = { isRefreshingPorts: false };
+            if (prevKey !== nextKey) {
+                patch.ports = next;
+            }
+            this.setState(patch);
         }).catch(err => {
             console.error(err);
-            this.setState({ isLoading: false });
+            if (!this.isUnmounted) {
+                this.setState({ isRefreshingPorts: false });
+            }
+        }).finally(() => {
+            this._portRefreshInFlight = false;
         });
-
-        if (this.isEsp32Board()) {
-            this.handleScanBle();
+    }
+    teardownBleLink (options = {}) {
+        if (!this.bleLink) return;
+        const keepNative = Boolean(options.keepNative);
+        if (keepNative && typeof this.bleLink.detach === 'function') {
+            this.bleLink.detach().catch(() => {});
+        } else {
+            this.bleLink.close();
         }
+        this.bleLink = null;
     }
     componentWillUnmount() {
         this.isUnmounted = true;
+        this.stopPortAutoPoll();
         if (this.unlistenPorts) {
             this.unlistenPorts();
         }
         if (this.connectionSuccessTimer) {
             clearTimeout(this.connectionSuccessTimer);
         }
-        this.teardownBleLink();
-    }
-    teardownBleLink () {
-        if (this.bleLink) {
-            this.bleLink.close();
-            this.bleLink = null;
-        }
+        // Jangan putus BLE setelah user sudah Connect — Live Mode butuh sesi itu.
+        const keepNative = String(
+            this.props.connectedDevice ||
+            (typeof window !== 'undefined' ? window.__garudabotConnectedDevice : '') ||
+            ''
+        ).startsWith('ble:');
+        this.teardownBleLink({keepNative});
     }
     showConnectionSuccess (label, connectionTarget) {
         if (this.connectionSuccessTimer) {
             clearTimeout(this.connectionSuccessTimer);
         }
 
+        const isBle = String(connectionTarget || '').startsWith('ble:');
+        // BLE + Live sudah aktif dari pair — jangan clearStale (itu matikan Live).
+        if (!(isBle && isBleLiveActive())) {
+            this.clearStaleLiveMode({keepBleNative: isBle});
+        }
+
         this.props.onSetConnectionDetails(connectionTarget);
+        if (typeof window !== 'undefined') {
+            window.__garudabotConnectedDevice = connectionTarget || null;
+        }
         this.setState({ connectionSuccess: label });
 
         this.connectionSuccessTimer = setTimeout(() => {
@@ -148,19 +234,43 @@ class BoardConnectionDialog extends React.Component {
             this.connectionSuccessTimer = null;
         }, 1800);
     }
+    clearStaleLiveMode (options = {}) {
+        const keepBleNative = Boolean(options.keepBleNative);
+        stopBleLive({keepNative: keepBleNative}).catch(() => {});
+        if (!keepBleNative) {
+            setLiveTransport(null);
+        }
+        if (this.props.onSetConnected) {
+            this.props.onSetConnected(false);
+        }
+        const tauri = window.__TAURI__;
+        if (tauri && tauri.core) {
+            tauri.core.invoke('board_disconnect').catch(() => {});
+        }
+    }
     handlePortWatcherEvent = (e) => {
         try {
-            const data = JSON.parse(e.payload);
-            this.setState({ ports: normalizePorts(data) });
+            let data = e && e.payload !== undefined ? e.payload : e;
+            if (typeof data === 'string') {
+                data = JSON.parse(data);
+            }
+            const next = normalizePorts(data);
+            const prevKey = (this.state.ports || []).map(p => p.address).sort().join('|');
+            const nextKey = next.map(p => p.address).sort().join('|');
+            // Abaikan update identik — cegah re-render daftar COM berkedip.
+            if (prevKey === nextKey) {
+                return;
+            }
+            this.setState({ ports: next });
         } catch (err) {
             console.error("FIRMATA: Error updating port list", err);
         }
     }
     componentDidUpdate(prevProps) {
         if (this.props.isConnecting && !prevProps.isConnecting) {
-            if (this.state.isLoading) {
-                this.setState({isLoading: false});
-            }
+            this.refreshWhenDialogOpens();
+        } else if (!this.props.isConnecting && prevProps.isConnecting) {
+            this.stopPortAutoPoll();
         }
     }
     getBoardName() {
@@ -183,17 +293,27 @@ class BoardConnectionDialog extends React.Component {
         }
         this.showConnectionSuccess(label || port, port);
     }
-    handleScanBle () {
+    handleScanBle (options = {}) {
+        const preserveConnected = Boolean(
+            options.preserveConnected ||
+            isBleLiveActive() ||
+            String(this.props.connectedDevice || '').startsWith('ble:')
+        );
         const prev = this.bleLink;
         this.setState({
             isScanningBle: true,
             bleScanError: null,
-            bleDevices: []
+            bleDevices: preserveConnected ? this.state.bleDevices : []
         });
 
         const run = async () => {
-            if (prev && typeof prev.closeAsync === 'function') {
-                try { await prev.closeAsync(); } catch (e) { /* ignore */ }
+            // Scan penuh = putus; preserve = jangan close native.
+            if (prev) {
+                if (preserveConnected && typeof prev.detach === 'function') {
+                    try { await prev.detach(); } catch (e) { /* ignore */ }
+                } else if (typeof prev.closeAsync === 'function') {
+                    try { await prev.closeAsync(); } catch (e) { /* ignore */ }
+                }
             }
 
             const link = new Esp32BleLink({
@@ -216,7 +336,13 @@ class BoardConnectionDialog extends React.Component {
             this.bleLink = link;
 
             try {
-                const found = await link.scan(14000);
+                const preferred = String(
+                    this.props.bleDeviceName || this.state.bleNameDraft || ''
+                ).trim();
+                if (typeof window !== 'undefined' && preferred) {
+                    window.__garudabotBlePreferredName = preferred;
+                }
+                const found = await link.discover(14000, preferred, {preserveConnected});
                 if (this.isUnmounted) return;
                 const list = Object.values(found || {});
                 if (list.length === 0) {
@@ -226,8 +352,8 @@ class BoardConnectionDialog extends React.Component {
                         bleScanError: this.props.intl.formatMessage({
                             id: 'gui.boardConnection.bleScanNotFound',
                             defaultMessage:
-                                'Scratch Link found no board. Quit Scratch Link → open again. ' +
-                                'Make sure the board is on, then Search again.',
+                                'Tidak ada board BLE. Pastikan board menyala, Bluetooth PC aktif, ' +
+                                'lalu Search lagi.',
                             description: 'BLE scan found nothing'
                         })
                     });
@@ -254,22 +380,72 @@ class BoardConnectionDialog extends React.Component {
         if (!this.bleLink) {
             window.alert(this.props.intl.formatMessage({
                 id: 'gui.boardConnection.bleScanFirst',
-                defaultMessage: 'Search BLE first (Scratch Link required).',
+                defaultMessage: 'Search BLE dulu, lalu pilih board.',
                 description: 'Alert when pairing without scan'
             }));
             return;
         }
 
         this.setState({ pairingBleId: device.peripheralId });
-        this.bleLink.connect(device.peripheralId).then(() => {
+        const preferred = String(
+            this.props.bleDeviceName || this.state.bleNameDraft || ''
+        ).trim();
+        if (typeof window !== 'undefined' && preferred) {
+            window.__garudabotBlePreferredName = preferred;
+        }
+
+        const run = async () => {
+            const result = await this.bleLink.connect(device.peripheralId, preferred);
             if (this.isUnmounted) return;
-            const label = device.name || device.peripheralId;
+            const resolvedId = (result && result.peripheralId) || device.peripheralId;
+            const label = (result && result.name) || device.name || resolvedId;
+
+            // Connect = langsung aktifkan Live Mode (ping). Satu langkah mulus.
+            // Firmware Live harus sudah dari Upload Program sebelumnya.
+            try {
+                await startBleLive(resolvedId, {keepNative: true});
+                setLiveTransport('ble');
+                if (this.props.onSetConnected) {
+                    this.props.onSetConnected(true);
+                }
+                if (typeof window !== 'undefined') {
+                    window.__garudabotLiveErrorShown = false;
+                    window.__garudabotLiveModeOn = true;
+                    window.__garudabotConnectedDevice = `ble:${resolvedId}`;
+                }
+            } catch (liveErr) {
+                // Native sudah connect — simpan target; user bisa Turn Live Mode On.
+                console.warn('[BLE Connect] Live ping gagal, target tetap disimpan', liveErr);
+                setLiveTransport(null);
+                if (this.props.onSetConnected) {
+                    this.props.onSetConnected(false);
+                }
+                if (this.isUnmounted) return;
+                this.setState({ pairingBleId: null });
+                this.showConnectionSuccess(label, `ble:${resolvedId}`);
+                this.teardownBleLink({keepNative: true});
+                window.alert(
+                    'Board tersambung, tapi Live Mode belum siap.\n\n' +
+                    String(liveErr && liveErr.message ? liveErr.message : liveErr) +
+                    '\n\nPastikan sudah Upload Program (firmware Live), ' +
+                    'lalu Board → Turn Live Mode On.'
+                );
+                return;
+            }
+
+            if (this.isUnmounted) return;
             this.setState({ pairingBleId: null });
-            // Simpan target upload Bluetooth: ble:<peripheralId>
-            this.showConnectionSuccess(label, `ble:${device.peripheralId}`);
-            // Lepas sesi Scratch Link — saat upload, OTA discover+connect di sesi baru.
-            this.teardownBleLink();
-        }).catch(err => {
+            this.showConnectionSuccess(label, `ble:${resolvedId}`);
+            // Pastikan flag Live tetap On setelah dialog success (clearStale di-skip).
+            if (this.props.onSetConnected) {
+                this.props.onSetConnected(true);
+            }
+            setLiveTransport('ble');
+            // Jangan putus native — Live Mode pakai sesi yang sama.
+            this.teardownBleLink({keepNative: true});
+        };
+
+        run().catch(err => {
             if (this.isUnmounted) return;
             this.setState({ pairingBleId: null });
             window.alert(String(err && err.message ? err.message : err));
@@ -282,6 +458,9 @@ class BoardConnectionDialog extends React.Component {
             return false;
         }
         this.props.onSetBleDeviceName(saved.name);
+        if (typeof window !== 'undefined') {
+            window.__garudabotBlePreferredName = saved.name;
+        }
         this.setState({
             bleNameDraft: saved.name,
             bleNameError: null
@@ -360,9 +539,18 @@ class BoardConnectionDialog extends React.Component {
         this.applyBleName(bleBatchNames[bleBatchIndex]);
     }
     handleCancel() {
-        this.teardownBleLink();
+        // Tutup dialog: jangan putus BLE kalau sudah Connect/Live.
+        this.stopPortAutoPoll();
+        const keepNative = String(
+            this.props.connectedDevice ||
+            (typeof window !== 'undefined' ? window.__garudabotConnectedDevice : '') ||
+            ''
+        ).startsWith('ble:') || isBleLiveActive();
+        this.teardownBleLink({keepNative});
         this.props.onSetConnecting(false);
-        this.props.onSetConnectionDetails(null);
+        if (!keepNative) {
+            this.props.onSetConnectionDetails(null);
+        }
     }
     render() {
         if (!this.props.isConnecting) {
@@ -377,6 +565,7 @@ class BoardConnectionDialog extends React.Component {
                 showUsbList
                 isEsp32={isEsp32}
                 isLoading={this.state.isLoading}
+                isRefreshingPorts={this.state.isRefreshingPorts}
                 connectionSuccess={this.state.connectionSuccess}
                 bleDevices={this.state.bleDevices}
                 isScanningBle={this.state.isScanningBle}
@@ -393,7 +582,13 @@ class BoardConnectionDialog extends React.Component {
                 lastFlashedBleName={this.state.lastFlashedBleName}
                 onCancel={this.handleCancel}
                 onConnect={this.handleConnect}
-                onScanBle={this.handleScanBle}
+                onRefreshPorts={this.handleRefreshPorts}
+                onScanBle={() => this.handleScanBle({
+                    preserveConnected: Boolean(
+                        String(this.props.connectedDevice || '').startsWith('ble:') ||
+                        isBleLiveActive()
+                    )
+                })}
                 onPairBle={this.handlePairBle}
                 onBleNameModeChange={this.handleBleNameModeChange}
                 onBleNameDraftChange={this.handleBleNameDraftChange}
@@ -410,23 +605,27 @@ class BoardConnectionDialog extends React.Component {
 
 BoardConnectionDialog.propTypes = {
     bleDeviceName: PropTypes.string,
+    connectedDevice: PropTypes.string,
     intl: intlShape.isRequired,
     isConnecting: PropTypes.bool,
     onSetBleDeviceName: PropTypes.func,
     onSetConnecting: PropTypes.func,
     onSetConnectionDetails: PropTypes.func,
+    onSetConnected: PropTypes.func,
     vm: PropTypes.object
 };
 
 const mapStateToProps = state => ({
     vm: state.raceroGui.vm,
     isConnecting: state.raceroGui.board.isConnecting,
-    bleDeviceName: state.raceroGui.board.bleDeviceName
+    bleDeviceName: state.raceroGui.board.bleDeviceName,
+    connectedDevice: state.raceroGui.board.connectedDevice
 });
 
 const mapDispatchToProps = dispatch => ({
     onSetConnecting: connecting => dispatch(setConnectingStatus(connecting)),
     onSetConnectionDetails: details => dispatch(setConnectionDetails(details)),
+    onSetConnected: connected => dispatch(setConnectedStatus(connected)),
     onSetBleDeviceName: name => dispatch(setBleDeviceName(name))
 });
 

@@ -59,7 +59,7 @@
 #include "WeInfraredReceiver.h"
 #include "WeSpeechSynthesisModuleV2.h"
 #include "WeCO2Sensor.h"
-#include "ESP32Servo.h"
+#include <ESP32Servo.h> // library resmi ESP32Servo (jangan vendored di weeecode)
 #include "WeWeight.h"
 
 
