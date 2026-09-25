@@ -1,0 +1,200 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+/* Docked bottom panel — part of flex layout, NOT position:fixed overlay */
+.panel {
+    flex: 0 0 auto;
+    height: 180px;
+    min-height: 120px;
+    max-height: 45vh;
+    display: flex;
+    flex-direction: column;
+    background: #252526;
+    border-top: 1px solid #3c3c3c;
+    color: #cccccc;
+    font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+}
+
+.resizeHandle {
+    flex: 0 0 4px;
+    cursor: ns-resize;
+    background: #3c3c3c;
+}
+
+.resizeHandle:hover,
+.resizeHandleActive {
+    background: #4C97FF;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 8px;
+    height: 32px;
+    flex-shrink: 0;
+    background: #2d2d2d;
+    border-bottom: 1px solid #3c3c3c;
+}
+
+.tab {
+    padding: 6px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    color: #969696;
+    margin-bottom: -1px;
+}
+
+.tab:hover {
+    color: #cccccc;
+}
+
+.tabActive {
+    padding: 6px 12px;
+    border: none;
+    border-bottom: 2px solid #4C97FF;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ffffff;
+    font-weight: 600;
+    margin-bottom: -1px;
+}
+
+.spacer {
+    flex: 1;
+}
+
+.headerBtn {
+    padding: 2px 8px;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    background: #3c3c3c;
+    color: #cccccc;
+    cursor: pointer;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+.headerBtn:hover {
+    background: #505050;
+    color: #fff;
+}
+
+.closeBtn {
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: #969696;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    margin-left: 4px;
+}
+
+.closeBtn:hover {
+    color: #fff;
+}
+
+.body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #2d2d2d;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+}
+
+.terminal {
+    flex: 1;
+    min-height: 0;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: Consolas, "Courier New", monospace;
+    padding: 6px 10px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.select,
+.input {
+    padding: 3px 6px;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    font-size: 12px;
+    background: #3c3c3c;
+    color: #cccccc;
+}
+
+.select {
+    min-width: 90px;
+    max-width: 140px;
+}
+
+.input {
+    flex: 1;
+    min-width: 140px;
+}
+
+.input:disabled,
+.select:disabled {
+    opacity: 0.5;
+}
+
+.actionBtn {
+    padding: 3px 10px;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    background: #0e639c;
+    color: #fff;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.actionBtn:hover:not(:disabled) {
+    background: #1177bb;
+}
+
+.actionBtn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.actionBtnDanger {
+    padding: 3px 10px;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    background: #5a5a5a;
+    color: #fff;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.actionBtnDanger:hover {
+    background: #6e6e6e;
+}
+
+.status {
+    font-size: 11px;
+    color: #969696;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

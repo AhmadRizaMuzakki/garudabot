@@ -49,7 +49,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 *
 * The ESP32 is a 32 bit processor that includes FP support; this code reflects that fact.
 */
-#ifdef ESP32
+
 #include <ESP32Servo.h>
 #if defined(ARDUINO)
 	#include "Arduino.h"
@@ -107,13 +107,15 @@ if(
 #endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
-				ESP_LOGE(TAG, "This pin can not be a servo: %d Servo available on: 1-21,26,33-42", pin);
+				ESP_LOGE(TAG, "This ESP32S2 pin can not be a servo: %d Servo available on: 1-21,26,33-42", pin);
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-			    ESP_LOGE(TAG, "This pin can not be a servo: %d Servo available on: 1-21,35-45,47-48", pin);
+			    ESP_LOGE(TAG, "This ESP32S3 pin can not be a servo: %d Servo available on: 1-21,35-45,47-48", pin);
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-				ESP_LOGE(TAG, "This pin can not be a servo: %d Servo available on: 1-10,18-21", pin);
+				ESP_LOGE(TAG, "This ESP32C3 pin can not be a servo: %d Servo available on: 1-10,18-21", pin);
+#elif defined(CONFIG_IDF_TARGET_ESP32C5)
+				ESP_LOGE(TAG, "This ESP32C5 pin can not be a servo: %d Servo available on: 0-14,12-14,23-28", pin);
 #else
-				ESP_LOGE(TAG, "This pin can not be a servo: %d Servo available on: 2,4,5,12-19,21-23,25-27,32-33",pin);
+				ESP_LOGE(TAG, "This ESP32 pin can not be a servo: %d Servo available on: 2,4,5,12-19,21-23,25-27,32-33",pin);
 #endif
             return 0;
         }
@@ -268,5 +270,3 @@ int Servo::ticksToUs(int ticks)
 }
 
  
-#endif
-

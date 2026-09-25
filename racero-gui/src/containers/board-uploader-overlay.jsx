@@ -3,16 +3,22 @@ import { connect } from 'react-redux';
 import { boards } from 'racero-boards';
 import BoardUploaderOverlayComponent from '../components/board-uploader-overlay/board-uploader-overlay.jsx';
 import Esp32BleLink from '../lib/ble/esp32-ble-link.js';
+import {startBleLive, stopBleLive} from '../lib/ble/ble-live-session.js';
+import {setLiveTransport} from '../lib/live-transport.js';
 import {
     saveLastFlashedBleName,
     loadStoredBatch,
     saveStoredBatch
 } from '../lib/ble/ble-device-name.js';
+import {setConnectedStatus} from '../reducers/board';
+import {closeSerialMonitorForUpload} from './debug-panel.jsx';
+import {setSerialStatus, appendDebugLog} from '../reducers/debug-panel';
+import {isAppDebug} from '../lib/app-debug.js';
 
 /**
  * Overlay compile/upload.
  * - USB (COMx): Rust flash lewat arduino-cli.
- * - Bluetooth (`ble:<id>`): Rust compile + inject → frontend kirim .bin lewat Scratch Link.
+ * - Bluetooth (`ble:<id>`): Rust compile + inject → frontend kirim .bin lewat BLE native.
  *
  * Log di-batch (~200ms) supaya PC lama tidak re-render tiap baris compiler.
  */
@@ -153,10 +159,27 @@ class BoardUploaderOverlay extends React.Component {
             this.bleLink.close();
             this.bleLink = null;
         }
+        // Lepas sesi Live Mode BLE agar link BLE bebas untuk OTA.
+        try {
+            await stopBleLive({keepNative: false});
+            if (this.props.onSetConnected) {
+                this.props.onSetConnected(false);
+            }
+        } catch (e) { /* ignore */ }
         this.flushLogBuffer(true);
 
         const { cppCode } = this.props;
         try {
+            if (isAppDebug()) {
+                await closeSerialMonitorForUpload();
+                if (this.props.onSerialClosedForUpload) {
+                    this.props.onSerialClosedForUpload();
+                }
+                if (this.props.onAppendDebugLog) {
+                    this.props.onAppendDebugLog('--- Upload dimulai ---\n');
+                }
+            }
+
             this.unlisten = await tauri.event.listen('compiler-log', (event) => {
                 if (this._cancelled) return;
                 const payload = String(event.payload || '');
@@ -172,7 +195,8 @@ class BoardUploaderOverlay extends React.Component {
 
             await tauri.core.invoke('board_disconnect');
             if (this._cancelled) return;
-            await new Promise(res => setTimeout(res, 500));
+            // Windows perlu waktu melepas handle COM setelah Live/Firmata.
+            await new Promise(res => setTimeout(res, 1200));
             if (this._cancelled) return;
 
             const boardName = (this.props.vm.runtime.boardConfig &&
@@ -256,7 +280,7 @@ class BoardUploaderOverlay extends React.Component {
     };
 
     /**
-     * Lanjutan upload Bluetooth: terima payload JSON dari Rust, lalu OTA via Scratch Link.
+     * Lanjutan upload Bluetooth: terima payload JSON dari Rust, lalu OTA via BLE native.
      * (Compile sudah selesai di backend; di sini hanya transfer firmware.)
      */
     runBleOta = async (payload, bleName) => {
@@ -298,6 +322,7 @@ class BoardUploaderOverlay extends React.Component {
 
         try {
             await link.uploadOta(peripheralId, payload.firmwareBase64, {
+                preferredName: bleName || this.props.bleDeviceName || '',
                 onStatus: () => {},
                 onProgress: (sent, total) => {
                     if (this._cancelled || !total) return;
@@ -309,11 +334,48 @@ class BoardUploaderOverlay extends React.Component {
                 }
             });
             if (this._cancelled) return;
-            this.markBleNameFlashed(bleName || this.props.bleDeviceName || 'Garudabot');
+            const flashedName = bleName || this.props.bleDeviceName || 'Garudabot';
+            this.markBleNameFlashed(flashedName);
+            if (typeof window !== 'undefined') {
+                window.__garudabotBlePreferredName = flashedName;
+            }
             this.appendLog(
-                `Selesai. Nama BLE di firmware: "${bleName || this.props.bleDeviceName}". ` +
-                'ESP32 restart — Connect BLE lagi sebentar.\n'
+                `Selesai. Nama BLE di firmware: "${flashedName}". ` +
+                'Menunggu restart ESP32, menyambung Live Mode…\n'
             );
+
+            // Setelah OTA board reboot — sambung ulang Live otomatis.
+            try {
+                await stopBleLive({keepNative: false});
+            } catch (e) { /* ignore */ }
+            try {
+                await link.closeAsync();
+            } catch (e) { /* ignore */ }
+            this.bleLink = null;
+            await new Promise(r => setTimeout(r, 4000));
+            if (this._cancelled) return;
+            try {
+                // ID Windows sering berubah setelah reboot — startBleLive pakai preferred name.
+                await startBleLive(String(peripheralId), {keepNative: false});
+                setLiveTransport('ble');
+                if (this.props.onSetConnected) {
+                    this.props.onSetConnected(true);
+                }
+                if (typeof window !== 'undefined') {
+                    const session = window.__garudabotBleLiveSession;
+                    const newId = (session && session.peripheralId) || peripheralId;
+                    window.__garudabotConnectedDevice = `ble:${newId}`;
+                    window.__garudabotLiveModeOn = true;
+                    window.__garudabotLiveErrorShown = false;
+                }
+                this.appendLog('Live Mode tersambung lagi. Siap green flag.\n', true);
+            } catch (reErr) {
+                this.appendLog(
+                    `Auto-reconnect Live gagal: ${reErr && reErr.message ? reErr.message : reErr}. ` +
+                    'Search → Connect BLE lagi.\n',
+                    true
+                );
+            }
             this.setState({ isCompiling: false });
         } catch (error) {
             if (this._cancelled || this.isCancelledError(error)) {
@@ -322,7 +384,7 @@ class BoardUploaderOverlay extends React.Component {
                 return;
             }
             this.appendLog(`\nBLE OTA gagal: ${error}\n`);
-            this.appendLog('Cek Scratch Link + board menyala, lalu Connect BLE ulang.\n');
+            this.appendLog('Cek Bluetooth PC + board menyala, lalu Connect BLE ulang.\n');
             this.setState({ isCompiling: false });
         } finally {
             if (this.bleLink) {
@@ -355,4 +417,13 @@ const mapStateToProps = state => {
     };
 };
 
-export default connect(mapStateToProps)(BoardUploaderOverlay);
+const mapDispatchToProps = dispatch => ({
+    onSetConnected: connected => dispatch(setConnectedStatus(connected)),
+    onSerialClosedForUpload: () => dispatch(setSerialStatus({
+        connected: false,
+        status: 'Ditutup untuk upload'
+    })),
+    onAppendDebugLog: text => dispatch(appendDebugLog(text))
+});
+
+export default connect(mapStateToProps, mapDispatchToProps)(BoardUploaderOverlay);

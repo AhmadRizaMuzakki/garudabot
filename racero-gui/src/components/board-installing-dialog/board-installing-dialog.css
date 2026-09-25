@@ -7,8 +7,7 @@
     border-color: $ui-black-transparent;
 }
 
-/* Bypass CSS Module hashing to force-hide the Modal's close button */
-.modalContent [class*="close-button"],
+/* Bypass CSS Module hashing — biarkan tombol Cancel di body; sembunyikan X bawaan saja */
 .modalContent [class*="header-item-close"] {
     visibility: hidden !important;
     pointer-events: none !important;
@@ -18,10 +17,31 @@
     margin-bottom: 1rem;
     font-size: 1rem;
     text-align: center;
+    padding: 0 1rem;
+    line-height: 1.4;
 }
 
 .scanning {
     animation: pulse 1.5s infinite;
+}
+
+.actions {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 1rem;
+}
+
+.cancelButton {
+    border: 1px solid $ui-black-transparent;
+    background: $ui-white;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.cancelButton:hover {
+    background: $ui-secondary;
 }
 
 @keyframes pulse {

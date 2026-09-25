@@ -21,8 +21,11 @@ export class ArduinoCompiler {
             // Math
             'math_angle': this.handleMathNumber,
             'math_number': this.handleMathNumber,
+            'math_integer': this.handleMathNumber,
             'math_whole_number': this.handleMathNumber,
             'math_positive_number': this.handleMathNumber,
+            'math_slider': this.handleMathNumber,
+            'math_slider_motor': this.handleMathNumber,
 
             // Operators
             'operator_add': this.handleOperatorAdd,
@@ -266,9 +269,10 @@ export class ArduinoCompiler {
         return `${value}`;
     }
 
-    handleMathNumber(block) { 
-        const value = block.fields.NUM.value;
-        return `${Number(value)}`; 
+    handleMathNumber(block) {
+        const raw = block.fields && block.fields.NUM && block.fields.NUM.value;
+        const value = Number(raw);
+        return `${Number.isFinite(value) ? value : 0}`;
     }
 
     /* Operators */
@@ -771,9 +775,11 @@ bool isIRButtonPressed(uint32_t targetButton) {
         const speed = this.getInput(block, 'SPEED');
         const port = String(motor).trim() === 'M2' ? 'M2' : 'M1';
         this.includes.add('#include <WeELFESP32Motor.h>');
-        this.globals.add(
-            `WeELFMotor weDcMotor${port}(WE_ELF_${port}_IN1, WE_ELF_${port}_IN2);\n`
-        );
+        // M2 wiring fisik terbalik — pass WE_ELF_M2_REVERSE, jangan tukar nomor pin.
+        const ctorArgs = port === 'M2'
+            ? `WE_ELF_M2_IN1, WE_ELF_M2_IN2, WE_ELF_M2_REVERSE`
+            : `WE_ELF_M1_IN1, WE_ELF_M1_IN2`;
+        this.globals.add(`WeELFMotor weDcMotor${port}(${ctorArgs});\n`);
         this.setups.add(`weDcMotor${port}.begin();\n`);
         return `weDcMotor${port}.runPercent((int)(${speed}));\n`;
     }

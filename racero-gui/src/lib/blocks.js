@@ -6,6 +6,40 @@
  */
 export default function (vm, useCatBlocks) {
     const RaceroBlocks = useCatBlocks ? require('cat-blocks') : require('racero-blocks');
+
+    // Ensure slider number shadows exist (motor speed, etc.) even if an older
+    // racero-blocks bundle was cached without math_slider.
+    const ensureSliderNumberBlock = function (type, min, max, value) {
+        if (RaceroBlocks.Blocks[type]) {
+            return;
+        }
+        RaceroBlocks.Blocks[type] = {
+            init: function () {
+                this.jsonInit({
+                    message0: '%1',
+                    args0: [
+                        {
+                            type: 'field_number',
+                            name: 'NUM',
+                            value: value,
+                            min: min,
+                            max: max,
+                            precision: 1
+                        }
+                    ],
+                    output: 'Number',
+                    outputShape: RaceroBlocks.OUTPUT_SHAPE_ROUND,
+                    colour: RaceroBlocks.Colours.textField,
+                    colourSecondary: RaceroBlocks.Colours.textField,
+                    colourTertiary: RaceroBlocks.Colours.textField,
+                    colourQuaternary: RaceroBlocks.Colours.textField
+                });
+            }
+        };
+    };
+    ensureSliderNumberBlock('math_slider', 0, 100, 100);
+    ensureSliderNumberBlock('math_slider_motor', -100, 100, 100);
+
     const jsonForMenuBlock = function (name, menuOptionsFn, colors, start) {
         return {
             message0: '%1',

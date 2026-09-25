@@ -9,6 +9,7 @@ const SET_CONNECTING = 'racero-gui/board/SET_CONNECTING';
 const SET_CONNECTED  = 'racero-gui/board/SET_CONNECTED';
 const SET_COMPILING  = 'racero-gui/board/SET_COMPILING';
 const SET_INSTALLING = 'racero-gui/board/SET_INSTALLING';
+const SET_INSTALLING_STATUS = 'racero-gui/board/SET_INSTALLING_STATUS';
 const SET_UPLOADING  = 'racero-gui/board/SET_UPLOADING';
 
 const SET_CONNECTED_DEVICES = 'racero-gui/board/SET_CONNECTED_DEVICES';
@@ -23,6 +24,7 @@ const initialState = {
     isConnected: false,
     isCompiling: false,
     isInstalling: false,
+    installingStatus: '',
     isUploading: false,
 
     connectedDevice: null,
@@ -59,7 +61,12 @@ const reducer = function (state, action) {
             });
         case SET_INSTALLING:
             return Object.assign({}, state, {
-                isInstalling: action.installing
+                isInstalling: action.installing,
+                installingStatus: action.installing ? (action.status || state.installingStatus || '') : ''
+            });
+        case SET_INSTALLING_STATUS:
+            return Object.assign({}, state, {
+                installingStatus: action.status || ''
             });
         case SET_UPLOADING:
             return Object.assign({}, state, {
@@ -112,14 +119,20 @@ const setCompilingStatus = (compiling) => ({
     compiling: compiling
 });
 
-const setInstallStatus = (installing) => ({
+const setInstallStatus = (installing, status) => ({
     type: SET_INSTALLING,
-    installing: installing
+    installing: installing,
+    status: status || ''
+});
+
+const setInstallingStatusMessage = status => ({
+    type: SET_INSTALLING_STATUS,
+    status: status || ''
 });
 
 const setUploadStatus = (uploading) => ({
     type: SET_UPLOADING,
-    compiling: uploading
+    uploading: uploading
 });
 
 const setConnectionDetails = function (details) {
@@ -159,6 +172,7 @@ export {
     setConnectedStatus,
     setCompilingStatus,
     setInstallStatus,
+    setInstallingStatusMessage,
     setUploadStatus,
     setConnectionDetails,
     setOtaPassword,

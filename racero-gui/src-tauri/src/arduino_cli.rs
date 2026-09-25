@@ -90,25 +90,40 @@ pub(crate) fn append_compile_speed_args(args: &mut Vec<String>, build_path: Opti
     }
 }
 
+/// Mode log ringkas: bedakan phase supaya teks tidak bilang "mengompilasi" saat upload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QuietPhase {
+    /// Log penuh (dev / non-USB).
+    Verbose,
+    Compile,
+    Upload,
+}
+
 /// Jalankan arduino-cli.
-/// `quiet`: log ringkas untuk upload USB (tanpa dump esptool).
 pub(crate) async fn run_with_logs(
     app: &AppHandle,
     args: Vec<String>,
-    quiet: bool,
+    phase: QuietPhase,
 ) -> Result<i32, String> {
+    let quiet = phase != QuietPhase::Verbose;
     let job = app.state::<CompileJobState>();
     job.cancelled.store(false, Ordering::SeqCst);
     job.clear_child();
 
-    if !quiet {
-        let jobs = compile_job_count();
-        let _ = app.emit(
-            "compiler-log",
-            format!("Compile jobs: {} (disesuaikan dengan CPU)\n", jobs),
-        );
-    } else {
-        let _ = app.emit("compiler-log", "Mengompilasi...\n");
+    match phase {
+        QuietPhase::Verbose => {
+            let jobs = compile_job_count();
+            let _ = app.emit(
+                "compiler-log",
+                format!("Compile jobs: {} (disesuaikan dengan CPU)\n", jobs),
+            );
+        }
+        QuietPhase::Compile => {
+            let _ = app.emit("compiler-log", "Mengompilasi...\n");
+        }
+        QuietPhase::Upload => {
+            // "Upload ke COMx..." sudah di-emit pemanggil.
+        }
     }
 
     let sidecar = app
@@ -116,8 +131,13 @@ pub(crate) async fn run_with_logs(
         .sidecar("arduino-cli")
         .map_err(|e| format!("Arduino CLI: {}", e))?;
 
+    // Isolasi sketchbook: Documents/Arduino/libraries (mis. ESP32Servo) sering
+    // bentrok header dengan bundel weeecode (ESP32PWM). Pakai user dir kosong
+    // + --libraries dari append_libraries saja.
+    let isolated_user = isolated_sketchbook_dir();
     let mut exit_code = 0;
     let (mut rx, child) = sidecar
+        .env("ARDUINO_DIRECTORIES_USER", &isolated_user)
         .args(args)
         .spawn()
         .map_err(|e| format!("Arduino CLI: {}", e))?;
@@ -135,6 +155,10 @@ pub(crate) async fn run_with_logs(
     let mut last_flush = Instant::now();
     let flush_every = Duration::from_millis(200);
     let mut quiet_progress = QuietUploadProgress::default();
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(12));
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.tick().await;
+    let mut heartbeat_n: u32 = 0;
 
     let flush = |app: &AppHandle, buf: &mut String| {
         if buf.is_empty() {
@@ -144,50 +168,77 @@ pub(crate) async fn run_with_logs(
         let _ = app.emit("compiler-log", chunk);
     };
 
-    while let Some(event) = rx.recv().await {
+    loop {
         if job.cancelled.load(Ordering::SeqCst) {
             flush(app, &mut log_buf);
             job.clear_child();
             return Err("Upload dibatalkan.".to_string());
         }
-        match event {
-            CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes);
-                if quiet {
-                    if let Some(msg) = quiet_progress.map_line(&line) {
-                        log_buf.push_str(&msg);
-                    }
-                } else {
-                    log_buf.push_str(&line);
-                    if !line.ends_with('\n') {
-                        log_buf.push('\n');
-                    }
-                }
-                if last_flush.elapsed() >= flush_every || log_buf.len() >= 4096 {
-                    flush(app, &mut log_buf);
-                    last_flush = Instant::now();
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                flush(app, &mut log_buf);
-                exit_code = payload.code.unwrap_or(-1);
-                if !job.cancelled.load(Ordering::SeqCst) {
-                    if quiet {
-                        if exit_code == 0 {
-                            let _ = app.emit("compiler-log", "Selesai.\n");
+
+        tokio::select! {
+            event = rx.recv() => {
+                let Some(event) = event else { break; };
+                match event {
+                    CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
+                        let line = String::from_utf8_lossy(&line_bytes);
+                        if quiet {
+                            if let Some(msg) = quiet_progress.map_line(&line, phase) {
+                                log_buf.push_str(&msg);
+                            }
                         } else {
-                            let _ = app.emit(
-                                "compiler-log",
-                                format!("Gagal (kode {}).\n", exit_code),
-                            );
+                            log_buf.push_str(&line);
+                            if !line.ends_with('\n') {
+                                log_buf.push('\n');
+                            }
                         }
-                    } else {
-                        let status = format!("\nProcess finished with code: {:?}", payload.code);
-                        let _ = app.emit("compiler-log", status);
+                        if last_flush.elapsed() >= flush_every || log_buf.len() >= 4096 {
+                            flush(app, &mut log_buf);
+                            last_flush = Instant::now();
+                        }
                     }
+                    CommandEvent::Terminated(payload) => {
+                        flush(app, &mut log_buf);
+                        exit_code = payload.code.unwrap_or(-1);
+                        if !job.cancelled.load(Ordering::SeqCst) {
+                            if quiet {
+                                if exit_code == 0 {
+                                    let done = match phase {
+                                        QuietPhase::Compile => "Compile selesai.\n",
+                                        QuietPhase::Upload => "Flash selesai.\n",
+                                        QuietPhase::Verbose => "Selesai.\n",
+                                    };
+                                    let _ = app.emit("compiler-log", done);
+                                } else {
+                                    let _ = app.emit(
+                                        "compiler-log",
+                                        format!("Gagal (kode {}).\n", exit_code),
+                                    );
+                                }
+                            } else {
+                                let status =
+                                    format!("\nProcess finished with code: {:?}", payload.code);
+                                let _ = app.emit("compiler-log", status);
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
-            _ => {}
+            _ = heartbeat.tick(), if quiet => {
+                heartbeat_n += 1;
+                let msg = match phase {
+                    QuietPhase::Compile => {
+                        format!("…masih mengompilasi ({})\n", heartbeat_n)
+                    }
+                    QuietPhase::Upload => {
+                        format!("…masih mengunggah ({})\n", heartbeat_n)
+                    }
+                    QuietPhase::Verbose => String::new(),
+                };
+                if !msg.is_empty() {
+                    let _ = app.emit("compiler-log", msg);
+                }
+            }
         }
     }
 
@@ -202,61 +253,69 @@ pub(crate) async fn run_with_logs(
 /// Filter log upload USB → beberapa baris status saja.
 #[derive(Default)]
 struct QuietUploadProgress {
-    compiling: bool,
+    sketch_size: bool,
     connected: bool,
     uploading: bool,
 }
 
 impl QuietUploadProgress {
-    fn map_line(&mut self, line: &str) -> Option<String> {
+    fn map_line(&mut self, line: &str, phase: QuietPhase) -> Option<String> {
         let t = line.trim();
         if t.is_empty() {
             return None;
         }
         let lower = t.to_ascii_lowercase();
 
-        // Error / warning penting selalu tampil.
+        // Noise esptool Windows — bukan error sungguhan.
+        if lower.contains("failed to get vid/pid")
+            || lower.contains("using standard reset sequence")
+            || lower.contains("stub running")
+            || lower.contains("changing baud")
+            || lower.contains("configuring flash")
+            || lower.contains("flash will be erased")
+            || lower.contains("compressed")
+            || lower.contains("hash of data verified")
+            || lower.contains("hard resetting")
+        {
+            return None;
+        }
+
+        // Error penting (setelah filter noise di atas).
         if lower.contains("error:")
-            || lower.contains("error ")
-            || lower.contains("failed")
-            || lower.contains("fatal")
+            || lower.contains(" fatal")
+            || lower.starts_with("fatal")
             || lower.contains("traceback")
             || lower.contains("permission denied")
             || lower.contains("could not open")
             || lower.contains("timed out")
             || lower.contains("no serial data")
             || lower.contains("wrong boot mode")
+            || (lower.contains("failed") && !lower.contains("vid/pid"))
         {
             return Some(format!("{}\n", t));
         }
 
-        if !self.compiling
-            && (lower.contains("compiling sketch")
-                || (lower.contains("library") && lower.contains("detected"))
-                || lower.starts_with("sketch uses"))
+        if phase == QuietPhase::Compile
+            && !self.sketch_size
+            && lower.starts_with("sketch uses")
         {
-            self.compiling = true;
-            // "Mengompilasi..." sudah di-emit di awal; skip spam.
-            if lower.starts_with("sketch uses") {
-                // Satu baris ukuran sketch — berguna & singkat.
-                return Some(format!("{}\n", t));
+            self.sketch_size = true;
+            // Ringkas: "Sketch uses 1256822 bytes (63%) of program storage..."
+            if let Some(pct) = lower.split('(').nth(1).and_then(|s| s.split(')').next()) {
+                return Some(format!("Ukuran firmware: {}\n", pct.trim()));
             }
-            return None;
+            return Some(format!("{}\n", t));
         }
 
-        if !self.connected
-            && (lower.contains("connecting")
-                || lower.contains("connected to")
-                || lower.contains("serial port"))
+        if phase == QuietPhase::Upload && !self.connected
+            && (lower.contains("connecting") || lower.contains("connected to"))
         {
-            if lower.contains("connecting") || lower.contains("connected to") {
-                self.connected = true;
-                return Some("Menghubungkan ke board...\n".into());
-            }
-            return None;
+            self.connected = true;
+            return Some("Menghubungkan ke board...\n".into());
         }
 
-        if !self.uploading
+        if phase == QuietPhase::Upload
+            && !self.uploading
             && (lower.contains("writing at")
                 || lower.contains("uploading")
                 || lower.contains("flashing")
@@ -284,6 +343,152 @@ pub(crate) fn libraries_dir(app: &AppHandle) -> Option<PathBuf> {
     }
     candidates.push(PathBuf::from("arduino-libraries"));
     candidates.into_iter().find(|p| p.is_dir())
+}
+
+/// Sketchbook kosong agar library user (Documents/Arduino/libraries) tidak
+/// ikut di-resolve saat compile — cegah konflik ESP32Servo vs weeecode.
+pub(crate) fn isolated_sketchbook_dir() -> String {
+    let root = if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        PathBuf::from(local).join("Garudabot").join("arduino-sketchbook")
+    } else {
+        std::env::temp_dir()
+            .join("Garudabot")
+            .join("arduino-sketchbook")
+    };
+    let libraries = root.join("libraries");
+    let _ = fs::create_dir_all(&libraries);
+    path_for_cli(&root)
+}
+
+fn isolated_libraries_dir() -> PathBuf {
+    PathBuf::from(isolated_sketchbook_dir()).join("libraries")
+}
+
+fn lib_header_exists(lib_dir_name: &str, header: &str) -> bool {
+    let root = isolated_libraries_dir();
+    let candidates = [
+        root.join(lib_dir_name).join(header),
+        root.join(lib_dir_name).join("src").join(header),
+        root.join(lib_dir_name.to_ascii_lowercase()).join(header),
+        root.join(lib_dir_name.to_ascii_lowercase())
+            .join("src")
+            .join(header),
+    ];
+    candidates.iter().any(|p| p.is_file())
+}
+
+/// Pastikan library untuk StandardFirmata / Live Mode USB ada di sketchbook
+/// terisolasi (bukan Documents — biar tidak bentrok ESP32Servo vs weeecode).
+pub(crate) async fn ensure_live_mode_libraries(app: &AppHandle) -> Result<(), String> {
+    // Firmata dari fork zacknuv (Boards.h ESP32). Lainnya dari Library Manager.
+    struct Need {
+        folder: &'static str,
+        header: &'static str,
+        install_args: &'static [&'static str],
+        label: &'static str,
+    }
+    let needs = [
+        Need {
+            folder: "Firmata",
+            header: "Firmata.h",
+            install_args: &["lib", "install", "--git-url", "https://github.com/zacknuv/firmata.git"],
+            label: "Firmata",
+        },
+        Need {
+            folder: "ESP32Servo",
+            header: "ESP32Servo.h",
+            // Official library (ESP32 core 3.x). Jangan pakai copy lama di weeecode.
+            install_args: &["lib", "install", "ESP32Servo"],
+            label: "ESP32Servo",
+        },
+        Need {
+            folder: "SSD1306Ascii",
+            header: "SSD1306Ascii.h",
+            install_args: &["lib", "install", "SSD1306Ascii"],
+            label: "SSD1306Ascii",
+        },
+        Need {
+            folder: "LiquidCrystal_I2C",
+            header: "LiquidCrystal_I2C.h",
+            install_args: &["lib", "install", "LiquidCrystal_I2C"],
+            label: "LiquidCrystal_I2C",
+        },
+    ];
+
+    let missing: Vec<&Need> = needs
+        .iter()
+        .filter(|n| !lib_header_exists(n.folder, n.header))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let _ = app.emit(
+        "compiler-log",
+        format!(
+            "Menginstal library Live Mode: {}...\n",
+            missing
+                .iter()
+                .map(|n| n.label)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    );
+
+    // git-url butuh flag unsafe.
+    let _ = run_arduino_cli_env(
+        app,
+        vec![
+            "config".into(),
+            "set".into(),
+            "library.enable_unsafe_install".into(),
+            "true".into(),
+        ],
+        true,
+    )
+    .await;
+
+    for need in missing {
+        let code = run_arduino_cli_env(
+            app,
+            need.install_args.iter().map(|s| (*s).to_string()).collect(),
+            true,
+        )
+        .await?;
+        if code != 0 && !lib_header_exists(need.folder, need.header) {
+            return Err(format!(
+                "Gagal menginstal library {} (exit {}). Cek koneksi internet.",
+                need.label, code
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Jalankan arduino-cli sekali (output diam) dengan sketchbook terisolasi.
+async fn run_arduino_cli_env(
+    app: &AppHandle,
+    args: Vec<String>,
+    quiet: bool,
+) -> Result<i32, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("arduino-cli")
+        .map_err(|e| format!("Arduino CLI: {}", e))?;
+    let isolated_user = isolated_sketchbook_dir();
+    let output = sidecar
+        .env("ARDUINO_DIRECTORIES_USER", &isolated_user)
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| format!("Arduino CLI: {}", e))?;
+    if !quiet {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            let _ = app.emit("compiler-log", format!("{}\n", stderr));
+        }
+    }
+    Ok(output.status.code().unwrap_or(-1))
 }
 
 /// Path yang aman untuk `--libraries` / xtensa-g++.
@@ -435,9 +640,8 @@ fn sync_dir_incremental(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Opsi FQBN ESP32: baud upload aman + partition lebih besar.
-/// FQBN options untuk ESP32 + BLE OTA: upload baud aman + partition min_spiffs
-/// (APP ~1.9MB) supaya sketch + GarudabotBleOta + library motor muat.
+/// Opsi FQBN ESP32: baud upload aman + partition lebih besar + hemat flash.
+/// min_spiffs ≈ APP 1.9MB; DebugLevel=none mengurangi string log di binary.
 pub(crate) fn fqbn_with_safe_upload_speed(fqbn: &str) -> String {
     if !fqbn.contains("esp32") {
         return fqbn.to_string();
@@ -446,6 +650,7 @@ pub(crate) fn fqbn_with_safe_upload_speed(fqbn: &str) -> String {
     let mut out = fqbn.to_string();
     out = append_fqbn_option(&out, "UploadSpeed", "115200");
     out = append_fqbn_option(&out, "PartitionScheme", "min_spiffs");
+    out = append_fqbn_option(&out, "DebugLevel", "none");
     out
 }
 

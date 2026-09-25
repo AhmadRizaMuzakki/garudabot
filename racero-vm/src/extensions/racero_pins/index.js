@@ -346,12 +346,79 @@ class RaceroPins {
     }
     boardStart (args) {
     }
+    _invokePin (name, payload) {
+        const reportError = err => {
+            let error = err instanceof Error ? err : new Error(String(err));
+            if (/FIRMATA:\s*Board is not connected/i.test(error.message) ||
+                /board is not connected/i.test(error.message)) {
+                error = new Error(
+                    'Sesi Live Mode putus.\n\nTurn Live Mode Off → On lagi, tunggu selesai, lalu green flag.'
+                );
+            }
+            console.error('[Live]', name, payload, error);
+            if (typeof window !== 'undefined' && !window.__garudabotLiveErrorShown) {
+                window.__garudabotLiveErrorShown = true;
+                window.alert(
+                    'Green flag jalan, tapi perintah ke board gagal:\n\n' + error.message
+                );
+            }
+            return error;
+        };
+
+        const tryInvoke = () => {
+            const bleLive = typeof window !== 'undefined' ? window.__garudabotBleLive : null;
+            if (bleLive && typeof bleLive.isActive === 'function' && bleLive.isActive()) {
+                return bleLive.invoke(name, payload);
+            }
+            const session = typeof window !== 'undefined' ? window.__garudabotBleLiveSession : null;
+            if (session && session.active && typeof session.invoke === 'function') {
+                return session.invoke(name, payload);
+            }
+            const transport = typeof window !== 'undefined' ? window.__garudabotLiveTransport : null;
+            if (transport === 'usb') {
+                const tauri = window.__TAURI__;
+                if (!tauri) {
+                    return Promise.reject(new Error('Live Mode USB belum siap.'));
+                }
+                return tauri.core.invoke(name, payload);
+            }
+            const target = typeof window !== 'undefined' ? window.__garudabotConnectedDevice : null;
+            if (target && String(target).startsWith('ble:')) {
+                return Promise.reject(new Error(
+                    'Sesi BLE Live belum siap.\n\nTurn Live Mode On lagi, tunggu dialog hilang.'
+                ));
+            }
+            return Promise.reject(new Error(
+                'Live Mode belum aktif.\n\nBoard → Turn Live Mode On, tunggu selesai, baru green flag.'
+            ));
+        };
+
+        const ensure = typeof window !== 'undefined' ? window.__garudabotEnsureLiveMode : null;
+        const bleLive = typeof window !== 'undefined' ? window.__garudabotBleLive : null;
+        const session = typeof window !== 'undefined' ? window.__garudabotBleLiveSession : null;
+        const alreadyLive = (bleLive && bleLive.isActive && bleLive.isActive()) ||
+            (session && session.active) ||
+            (typeof window !== 'undefined' && window.__garudabotLiveTransport === 'usb');
+
+        if (alreadyLive) {
+            return tryInvoke().catch(err => Promise.reject(reportError(err)));
+        }
+        if (typeof ensure === 'function') {
+            return ensure()
+                .then(() => tryInvoke())
+                .catch(err => Promise.reject(reportError(err)));
+        }
+        const liveOn = typeof window !== 'undefined' && window.__garudabotLiveModeOn;
+        return Promise.reject(reportError(new Error(
+            liveOn ?
+                'Menu Live Mode On, tapi sesi putus.\n\nTurn Live Mode Off → On lagi, lalu green flag.' :
+                'Live Mode belum aktif.\n\nBoard → Turn Live Mode On, tunggu selesai, baru green flag.'
+        )));
+    }
     digitalWrite (args) {
         const pin = Number(args.PIN);
         const value = Number(args.VALUE);
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-        return tauri.core.invoke('pin_digital_write', {
+        return this._invokePin('pin_digital_write', {
             pin: pin,
             value: value
         });
@@ -359,9 +426,7 @@ class RaceroPins {
     pwmWrite (args) {
         const pin = Number(args.PIN);
         const value = Number(args.VALUE);
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-        return tauri.core.invoke('pin_pwm_write', {
+        return this._invokePin('pin_pwm_write', {
             pin: pin,
             value: value
         });
@@ -369,9 +434,7 @@ class RaceroPins {
     analogWrite (args) {
         const pin = Number(args.PIN);
         const value = Number(args.VALUE);
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-        return tauri.core.invoke('pin_analog_write', {
+        return this._invokePin('pin_analog_write', {
             pin: pin,
             value: value
         });
@@ -379,9 +442,7 @@ class RaceroPins {
     servoWrite (args) {
         const pin = Number(args.PIN);
         const value = Number(args.VALUE);
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-        return tauri.core.invoke('pin_servo_write', {
+        return this._invokePin('pin_servo_write', {
             pin: pin,
             value: value
         });
@@ -390,9 +451,7 @@ class RaceroPins {
         const pin = Number(args.PIN);
         const note = Number(args.NOTE);
         const beat = Number(args.BEAT);
-        const tauri = window.__TAURI__;
-        if (!tauri) return;
-        return tauri.core.invoke('pin_tone', {
+        return this._invokePin('pin_tone', {
             pin: pin,
             frequency: note,
             duration: beat
@@ -400,9 +459,7 @@ class RaceroPins {
     }
     digitalRead (args) {
         const pin = Number(args.PIN);
-        const tauri = window.__TAURI__;
-        if (!tauri) return 0;
-        return tauri.core.invoke('pin_digital_read', {
+        return this._invokePin('pin_digital_read', {
             pin: pin
         }).then(value => {
             return value;
@@ -410,9 +467,7 @@ class RaceroPins {
     }
     analogRead (args) {
         const pin = Number(args.PIN);
-        const tauri = window.__TAURI__;
-        if (!tauri) return 0;
-        return tauri.core.invoke('pin_analog_read', {
+        return this._invokePin('pin_analog_read', {
             pin: pin
         }).then(value => {
             return value;
@@ -424,9 +479,7 @@ class RaceroPins {
     ultrasonicRead (args) {
         const trig = Number(args.TRIG);
         const echo = Number(args.ECHO);
-        const tauri = window.__TAURI__;
-        if (!tauri) return 0;
-        return tauri.core.invoke('pin_ultrasonic_read', {
+        return this._invokePin('pin_ultrasonic_read', {
             trig: trig,
             echo: echo,
         }).then(value => {

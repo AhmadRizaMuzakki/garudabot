@@ -277,8 +277,8 @@ const BoardConnectionDialogComponent = props => {
                     </div>
                     <p className={styles.stepHint}>
                         <FormattedMessage
-                            defaultMessage="Select USB to rename, then Upload"
-                            description="One-line connect hint"
+                            defaultMessage="Plug USB — port appears automatically"
+                            description="One-line connect hint for auto USB detect"
                             id="gui.boardConnection.connectHintShort"
                         />
                     </p>

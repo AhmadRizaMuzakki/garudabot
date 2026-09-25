@@ -6,7 +6,8 @@ module.exports = {
         browser: true
     },
     globals: {
-        process: true
+        process: true,
+        __GARUDABOT_APP_DEBUG__: true
     },
     rules: {
         // BEGIN: these caused trouble after upgrading eslint-plugin-react from 7.24.0 to 7.33.2

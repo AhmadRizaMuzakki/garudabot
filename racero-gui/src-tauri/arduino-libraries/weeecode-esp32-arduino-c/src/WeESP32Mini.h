@@ -61,7 +61,7 @@
 #include "WeInfraredReceiver.h"
 #include "WeHandle.h"
 #include "WeWeight.h"
-#include "ESP32Servo.h"
+#include <ESP32Servo.h> // library resmi ESP32Servo (jangan vendored di weeecode)
 #include "WeOLED.h"
 #include "WeRFIDModule.h"
 

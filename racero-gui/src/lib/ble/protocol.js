@@ -1,15 +1,19 @@
 /**
- * Protokol OTA Bluetooth Garudabot — harus cocok dengan firmware GarudabotBleOta.
+ * Protokol Bluetooth Garudabot — harus cocok dengan firmware GarudabotBleOta.
  *
- * Upload program wireless memakai BLE (Scratch Link), bukan SoftAP WiFi.
+ * Upload (OTA) + Live Mode pin I/O memakai Nordic UART yang sama.
  *
- * Packet (PC → ESP32, characteristic RX):
+ * OTA (PC → ESP32, RX):
  *   [CMD_BEGIN][size u32 LE]
  *   [CMD_DATA ][payload…]
  *   [CMD_END]
  *
- * Notify status (ESP32 → PC, characteristic TX):
+ * Live (PC → ESP32, RX):
+ *   [CMD_LIVE_*][args…]
+ *
+ * Notify (ESP32 → PC, TX):
  *   RDY | ACK:BEGIN | N:<bytes> | OK | ERR:…
+ *   LIVE | LIVE:4 | D:<pin>:<0|1> | A:<pin>:<value> | U:<cm> | OK:W
  */
 
 export const GARUDABOT_BLE = {
@@ -22,19 +26,31 @@ export const GARUDABOT_BLE = {
     cmdData: 0x02,
     cmdEnd: 0x03,
     cmdAbort: 0x04,
+    /** Live Mode — pin I/O realtime (green flag). */
+    cmdLiveDigitalWrite: 0x10,
+    cmdLivePwmWrite: 0x11,
+    cmdLiveServoWrite: 0x12,
+    cmdLiveTone: 0x13,
+    cmdLiveNoTone: 0x14,
+    cmdLiveDigitalRead: 0x15,
+    cmdLiveAnalogRead: 0x16,
+    cmdLivePing: 0x17,
+    cmdLiveUltrasonic: 0x18,
+    /** Dual-PWM motor: [cmd][in1][in2][speed_i8 -100..100] */
+    cmdLiveMotorDual: 0x19,
     /** Payload bytes per DATA packet (BLE MTU-safe). */
     chunkSize: 160
 };
 
 export const DISCOVER_OPTIONS = {
-    // Windows Scratch Link: name sering "" — filter service UUID saja.
+    // Windows BLE: name sering "" — filter service UUID saja.
     filters: [
         {services: [GARUDABOT_BLE.serviceUuid]}
     ],
     optionalServices: [GARUDABOT_BLE.serviceUuid]
 };
 
-/** Label fallback jika Scratch Link mengirim name kosong (sering di Windows). */
+/** Label fallback jika OS mengirim name kosong (sering di Windows). */
 export const peripheralDisplayName = peripheral => {
     const name = peripheral && peripheral.name ? String(peripheral.name).trim() : '';
     if (name) return name;
@@ -67,7 +83,7 @@ export const decodeFirmwareBase64 = firmwareBase64 => {
     return bytes;
 };
 
-/** Decode Scratch Link notify payload into ASCII status when possible. */
+/** Decode notify payload BLE menjadi ASCII status bila memungkinkan. */
 export const decodeNotifyMessage = (message, encoding) => {
     let text = message || '';
     try {
@@ -103,3 +119,70 @@ export const buildDataPacket = chunk => {
 };
 
 export const buildEndPacket = () => new Uint8Array([GARUDABOT_BLE.cmdEnd]);
+
+export const buildLiveDigitalWrite = (pin, value) => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveDigitalWrite,
+    pin & 0xff,
+    value ? 1 : 0
+]);
+
+export const buildLivePwmWrite = (pin, value) => new Uint8Array([
+    GARUDABOT_BLE.cmdLivePwmWrite,
+    pin & 0xff,
+    Math.max(0, Math.min(255, value | 0)) & 0xff
+]);
+
+export const buildLiveServoWrite = (pin, angle) => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveServoWrite,
+    pin & 0xff,
+    Math.max(0, Math.min(180, angle | 0)) & 0xff
+]);
+
+export const buildLiveTone = (pin, frequency, duration) => {
+    const freq = Math.max(0, Math.min(65535, frequency | 0));
+    const dur = Math.max(0, Math.min(65535, duration | 0));
+    return new Uint8Array([
+        GARUDABOT_BLE.cmdLiveTone,
+        pin & 0xff,
+        freq & 0xff,
+        (freq >> 8) & 0xff,
+        dur & 0xff,
+        (dur >> 8) & 0xff
+    ]);
+};
+
+export const buildLiveNoTone = pin => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveNoTone,
+    pin & 0xff
+]);
+
+export const buildLiveDigitalRead = pin => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveDigitalRead,
+    pin & 0xff
+]);
+
+export const buildLiveAnalogRead = pin => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveAnalogRead,
+    pin & 0xff
+]);
+
+export const buildLivePing = () => new Uint8Array([GARUDABOT_BLE.cmdLivePing]);
+
+export const buildLiveUltrasonic = (trig, echo) => new Uint8Array([
+    GARUDABOT_BLE.cmdLiveUltrasonic,
+    trig & 0xff,
+    echo & 0xff
+]);
+
+/** speedPercent: -100..100 (int8). */
+export const buildLiveMotorDual = (pin1, pin2, speedPercent) => {
+    let speed = Math.trunc(Number(speedPercent) || 0);
+    if (speed > 100) speed = 100;
+    if (speed < -100) speed = -100;
+    return new Uint8Array([
+        GARUDABOT_BLE.cmdLiveMotorDual,
+        pin1 & 0xff,
+        pin2 & 0xff,
+        speed & 0xff
+    ]);
+};

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Garudabot",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "identifier": "com.garudabot.garudabot",
   "build": {
     "frontendDist": "../build",
@@ -14,6 +14,7 @@
     "windows": [
       {
         "title": "Garudabot",
+        "label": "main",
         "width": 1280,
         "height": 720,
         "resizable": true,

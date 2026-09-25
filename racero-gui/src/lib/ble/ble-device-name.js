@@ -6,7 +6,7 @@
  * 2. Saat Upload ESP32, Rust inject: GarudabotBleOta::begin("Nama")
  * 3. Board reboot → advertise dengan nama itu
  *
- * Catatan Windows: Scratch Link sering mengirim name kosong; UI bisa
+ * Catatan Windows: nama BLE dari OS sering kosong; UI bisa
  * menampilkan nama hasil flash terakhir sebagai fallback.
  */
 
@@ -102,7 +102,7 @@ export const loadLastFlashedBleName = () => {
 };
 
 /**
- * Label generik dari OS/Scratch Link (bukan nama custom firmware).
+ * Label generik dari OS/BLE stack (bukan nama custom firmware).
  * Contoh: "", "ESP32-03323910", "Garudabot" default lama.
  */
 export const isGenericBleLabel = label => {
