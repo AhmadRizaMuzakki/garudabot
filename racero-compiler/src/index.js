@@ -170,6 +170,7 @@ export class ArduinoCompiler {
             'robotesp32_menu_newlineMenu': this.handleMenuRobotEsp32Default,
             'robotesp32_menu_varTypeMenu': this.handleMenuRobotEsp32Default,
             'robotesp32_menu_motorMenu': this.handleMenuRobotEsp32Default,
+            'robotesp32_menu_motorDirectionMenu': this.handleMenuRobotEsp32Default,
             'robotesp32_menu_digitalValueMenu': this.handleMenuRobotEsp32Default,
             'robotesp32_menu_buzzerNoteMenu': this.handleMenuRobotEsp32Default,
             'robotesp32_menu_buzzerBeatMenu': this.handleMenuRobotEsp32Default,
@@ -769,9 +770,11 @@ bool isIRButtonPressed(uint32_t targetButton) {
 
     /**
      * Kontrol DC motor M1/M2 untuk ELF ESP32 (dual-PWM IN1/IN2).
+     * Speed = kekuatan 1–100; DIRECTION forward/backward → signed percent.
      */
     handleRobotEsp32DcMotor (block) {
         const motor = this.getMenuValue(block, 'MOTOR', 'M1');
+        const directionRaw = String(this.getMenuValue(block, 'DIRECTION', 'forward')).trim();
         const speed = this.getInput(block, 'SPEED');
         const port = String(motor).trim() === 'M2' ? 'M2' : 'M1';
         this.includes.add('#include <WeELFESP32Motor.h>');
@@ -781,7 +784,16 @@ bool isIRButtonPressed(uint32_t targetButton) {
             : `WE_ELF_M1_IN1, WE_ELF_M1_IN2`;
         this.globals.add(`WeELFMotor weDcMotor${port}(${ctorArgs});\n`);
         this.setups.add(`weDcMotor${port}.begin();\n`);
-        return `weDcMotor${port}.runPercent((int)(${speed}));\n`;
+        const dirLiteral = directionRaw
+            .replace(/^String\("/, '')
+            .replace(/"\)$/, '')
+            .replace(/^["']|["']$/g, '')
+            .toLowerCase();
+        if (dirLiteral === 'forward' || dirLiteral === 'backward') {
+            const sign = dirLiteral === 'backward' ? '-' : '';
+            return `weDcMotor${port}.runPercent(${sign}abs((int)(${speed})));\n`;
+        }
+        return `weDcMotor${port}.runPercent((String(${directionRaw}).equals("backward") ? -1 : 1) * abs((int)(${speed})));\n`;
     }
 
     handleRobotEsp32DcMotor130 (block) {

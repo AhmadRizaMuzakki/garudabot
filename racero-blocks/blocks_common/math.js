@@ -189,7 +189,7 @@ Blockly.Blocks['math_slider'] = {
 
 Blockly.Blocks['math_slider_motor'] = {
   /**
-   * Motor speed slider: Range -100 - 100 (maju/mundur).
+   * Motor power slider: Range 1 - 100 (arah via menu forward/backward).
    * @this Blockly.Block
    */
   init: function() {
@@ -200,7 +200,7 @@ Blockly.Blocks['math_slider_motor'] = {
           "type": "field_number",
           "name": "NUM",
           "value": 100,
-          "min": -100,
+          "min": 1,
           "max": 100,
           "precision": 1
         }
