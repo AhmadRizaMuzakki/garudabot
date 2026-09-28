@@ -38,7 +38,31 @@ export default function (vm, useCatBlocks) {
         };
     };
     ensureSliderNumberBlock('math_slider', 0, 100, 100);
-    ensureSliderNumberBlock('math_slider_motor', -100, 100, 100);
+    // Ganti definisi motor slider ke 1–100 (arah via menu forward/backward).
+    // Jangan wrap init + setMin (API itu tidak ada di FieldNumber → crash layout).
+    RaceroBlocks.Blocks.math_slider_motor = {
+        init: function () {
+            this.jsonInit({
+                message0: '%1',
+                args0: [
+                    {
+                        type: 'field_number',
+                        name: 'NUM',
+                        value: 100,
+                        min: 1,
+                        max: 100,
+                        precision: 1
+                    }
+                ],
+                output: 'Number',
+                outputShape: RaceroBlocks.OUTPUT_SHAPE_ROUND,
+                colour: RaceroBlocks.Colours.textField,
+                colourSecondary: RaceroBlocks.Colours.textField,
+                colourTertiary: RaceroBlocks.Colours.textField,
+                colourQuaternary: RaceroBlocks.Colours.textField
+            });
+        }
+    };
 
     const jsonForMenuBlock = function (name, menuOptionsFn, colors, start) {
         return {

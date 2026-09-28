@@ -98,7 +98,7 @@ class RaceroPins {
             color1: '#D84315',
             color2: '#BF360C',
             color3: '#8E2400',
-            blockIconURI: iconURI,
+            menuIconURI: iconURI,
             blocks: [
                 {
                     opcode: 'boardStart',

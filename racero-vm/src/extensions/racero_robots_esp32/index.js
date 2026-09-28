@@ -66,11 +66,12 @@ class RaceroRobotsEsp32 {
                 '---',
                 'label:Motor',
 
-                {opcode: 'dcMotor', blockType: BlockType.COMMAND, text: 'dc motor [MOTOR] speed [SPEED]', arguments: {
+                {opcode: 'dcMotor', blockType: BlockType.COMMAND, text: 'dc motor [MOTOR] [DIRECTION] speed [SPEED]', arguments: {
                     MOTOR: {type: ArgumentType.STRING, menu: 'motorMenu', defaultValue: 'M1'},
+                    DIRECTION: {type: ArgumentType.STRING, menu: 'motorDirectionMenu', defaultValue: 'forward'},
                     SPEED: {type: ArgumentType.SLIDER, defaultValue: 100}
                 }},
-                {opcode: 'dcMotor130', blockType: BlockType.COMMAND, text: '130 DC motor direction pin connected to [DIRPIN] speed pin (PWM) connected to [PWMPIN] speed [SPEED]', arguments: {
+                {opcode: 'dcMotor130', blockType: BlockType.COMMAND, text: '130 DC motor dir [DIRPIN] pwm [PWMPIN] speed [SPEED]', arguments: {
                     DIRPIN: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 5},
                     PWMPIN: {type: ArgumentType.NUMBER, menu: 'pwmPinsMenu', defaultValue: 25},
                     SPEED: {type: ArgumentType.SLIDER, defaultValue: 100}
@@ -93,17 +94,17 @@ class RaceroRobotsEsp32 {
                     B: {type: ArgumentType.NUMBER, defaultValue: 255}
                 }},
 
-                {opcode: 'buzzerNoteBeat', blockType: BlockType.COMMAND, text: 'Buzzer pin [PIN] Frequency [NOTE] duration [BEAT] ms', arguments: {
+                {opcode: 'buzzerNoteBeat', blockType: BlockType.COMMAND, text: 'buzzer [PIN] note [NOTE] beat [BEAT] ms', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 27},
                     NOTE: {type: ArgumentType.STRING, menu: 'buzzerNoteMenu', defaultValue: '262'},
                     BEAT: {type: ArgumentType.STRING, menu: 'buzzerBeatMenu', defaultValue: '500'}
                 }},
-                {opcode: 'buzzerNoteSecond', blockType: BlockType.COMMAND, text: 'Buzzer pin [PIN] Frequency [NOTE] duration [SECOND] second ms', arguments: {
+                {opcode: 'buzzerNoteSecond', blockType: BlockType.COMMAND, text: 'buzzer [PIN] note [NOTE] [SECOND] s', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 27},
                     NOTE: {type: ArgumentType.STRING, menu: 'buzzerNoteMenu', defaultValue: '262'},
                     SECOND: {type: ArgumentType.NUMBER, defaultValue: 0.5}
                 }},
-                {opcode: 'buzzerNotationSecond', blockType: BlockType.COMMAND, text: 'Buzzer pin [PIN] Frequency notation [NOTATION] duration [SECOND] second ms', arguments: {
+                {opcode: 'buzzerNotationSecond', blockType: BlockType.COMMAND, text: 'buzzer [PIN] notation [NOTATION] [SECOND] s', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 27},
                     NOTATION: {type: ArgumentType.NUMBER, defaultValue: 1},
                     SECOND: {type: ArgumentType.NUMBER, defaultValue: 0.5}
@@ -111,27 +112,27 @@ class RaceroRobotsEsp32 {
                 '---',
                 'label:MP3',
 
-                {opcode: 'mp3Info', blockType: BlockType.COMMAND, text: 'Mp3 module Rx is connected to [RX], TX is connected to [TX], and the playback volume [VOL]', arguments: {
+                {opcode: 'mp3Info', blockType: BlockType.COMMAND, text: 'Mp3 RX [RX] TX [TX] volume [VOL]', arguments: {
                     RX: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 16},
                     TX: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 17},
                     VOL: {type: ArgumentType.NUMBER, defaultValue: 20}
                 }},
-                {opcode: 'mp3PlayTrack', blockType: BlockType.COMMAND, text: 'Mp3 module RX connected to [RX] TX connected to [TX] playing [TRACK]', arguments: {
+                {opcode: 'mp3PlayTrack', blockType: BlockType.COMMAND, text: 'Mp3 RX [RX] TX [TX] play track [TRACK]', arguments: {
                     RX: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 16},
                     TX: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 17},
                     TRACK: {type: ArgumentType.NUMBER, defaultValue: 1}
                 }},
-                {opcode: 'mp3PlaybackControl', blockType: BlockType.COMMAND, text: 'Mp3 module RX connected to [RX] TX connected to [TX] playback control [CONTROL]', arguments: {
+                {opcode: 'mp3PlaybackControl', blockType: BlockType.COMMAND, text: 'Mp3 RX [RX] TX [TX] [CONTROL]', arguments: {
                     RX: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 16},
                     TX: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 17},
                     CONTROL: {type: ArgumentType.STRING, menu: 'mp3ControlMenu', defaultValue: 'play'}
                 }},
-                {opcode: 'mp3PlaybackMode', blockType: BlockType.COMMAND, text: 'Mp3 module RX connected to [RX] TX connected to [TX] playback mode [MODE]', arguments: {
+                {opcode: 'mp3PlaybackMode', blockType: BlockType.COMMAND, text: 'Mp3 RX [RX] TX [TX] mode [MODE]', arguments: {
                     RX: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 16},
                     TX: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 17},
                     MODE: {type: ArgumentType.STRING, menu: 'mp3ModeMenu', defaultValue: 'loop all'}
                 }},
-                {opcode: 'mp3Distance', blockType: BlockType.REPORTER, text: 'Mp3 module RX connected to [RX] TX connected to [TX] playback distance (CM) [TRACK]', arguments: {
+                {opcode: 'mp3Distance', blockType: BlockType.REPORTER, text: 'Mp3 RX [RX] TX [TX] distance (CM) [TRACK]', arguments: {
                     RX: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 16},
                     TX: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 17},
                     TRACK: {type: ArgumentType.NUMBER, defaultValue: 1}
@@ -139,7 +140,7 @@ class RaceroRobotsEsp32 {
                 '---',
                 'label:Display',
 
-                {opcode: 'display4Digit', blockType: BlockType.COMMAND, text: '4-Digital LED module CLK [CLK] DIO [DIO] show number [NUM]', arguments: {
+                {opcode: 'display4Digit', blockType: BlockType.COMMAND, text: '4-digit CLK [CLK] DIO [DIO] show [NUM]', arguments: {
                     CLK: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 18},
                     DIO: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 19},
                     NUM: {type: ArgumentType.NUMBER, defaultValue: 100}
@@ -155,16 +156,16 @@ class RaceroRobotsEsp32 {
                     PIN: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 4}
                 }},
                 'label:Temperature',
-                {opcode: 'lm35Temperature', blockType: BlockType.REPORTER, text: 'LM35 temperature sensor pin [PIN]', arguments: {
+                {opcode: 'lm35Temperature', blockType: BlockType.REPORTER, text: 'LM35 temperature [PIN]', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'analogInputPinsMenu', defaultValue: 34}
                 }},
                 'label:Ultrasonic',
-                {opcode: 'ultrasonicDistance', blockType: BlockType.REPORTER, text: 'Ultrasonic distance (CM) trig pin [TRIG] echo pin [ECHO]', arguments: {
+                {opcode: 'ultrasonicDistance', blockType: BlockType.REPORTER, text: 'ultrasonic trig [TRIG] echo [ECHO] cm', arguments: {
                     TRIG: {type: ArgumentType.NUMBER, menu: 'digitalOutputPinsMenu', defaultValue: 5},
                     ECHO: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 18}
                 }},
                 'label:IR',
-                {opcode: 'infraredPressed', blockType: BlockType.BOOLEAN, text: 'Infrared receiving module [PIN] received [KEY] pressed?', arguments: {
+                {opcode: 'infraredPressed', blockType: BlockType.BOOLEAN, text: 'IR [PIN] received [KEY] pressed?', arguments: {
                     PIN: {type: ArgumentType.NUMBER, menu: 'digitalInputPinsMenu', defaultValue: 15},
                     KEY: {type: ArgumentType.STRING, menu: 'irKeyMenu', defaultValue: 'Power'}
                 }},
@@ -199,6 +200,10 @@ class RaceroRobotsEsp32 {
                 newlineMenu: {acceptReporters: true, items: [{text: 'on', value: 'on'}, {text: 'off', value: 'off'}]},
                 varTypeMenu: {acceptReporters: true, items: [{text: 'Number', value: 'Number'}, {text: 'String', value: 'String'}]},
                 motorMenu: {acceptReporters: true, items: [{text: 'M1', value: 'M1'}, {text: 'M2', value: 'M2'}]},
+                motorDirectionMenu: {acceptReporters: true, items: [
+                    {text: 'forward', value: 'forward'},
+                    {text: 'backward', value: 'backward'}
+                ]},
                 digitalValueMenu: {acceptReporters: true, items: [{text: 'HIGH', value: 'HIGH'}, {text: 'LOW', value: 'LOW'}]},
                 buzzerNoteMenu: {acceptReporters: true, items: [{text: 'C4', value: '262'}, {text: 'D4', value: '294'}, {text: 'E4', value: '330'}, {text: 'F4', value: '349'}, {text: 'G4', value: '392'}, {text: 'A4', value: '440'}, {text: 'B4', value: '494'}]},
                 buzzerBeatMenu: {acceptReporters: true, items: [{text: 'Whole', value: '1000'}, {text: 'Half', value: '500'}, {text: 'Quarter', value: '250'}, {text: 'Eighth', value: '125'}]},
@@ -342,21 +347,26 @@ class RaceroRobotsEsp32 {
     /**
      * Kontrol DC motor M1/M2.
      * Port silk: M1 = GPIO19/21, M2 = GPIO16/17 (16/17 terbukti = terminal M2).
+     * Speed = kekuatan 1–100 (0 = stop); arah dari menu forward/backward → signed percent.
      */
     dcMotor (args) {
         const motor = String(args.MOTOR);
-        const speed = Number(args.SPEED);
+        const direction = String(args.DIRECTION || 'forward').trim().toLowerCase();
+        const speed = Math.abs(Math.trunc(Number(args.SPEED)));
         const map = {
             M1: {in1: 19, in2: 21},
             M2: {in1: 16, in2: 17}
         };
         const pins = map[motor] || map.M1;
-        const clamped = Math.max(-100, Math.min(100, Math.trunc(speed)));
+        const magnitude = Math.max(0, Math.min(100, speed));
+        const signed = magnitude === 0
+            ? 0
+            : (direction === 'backward' ? -magnitude : magnitude);
 
         return this._invoke('pin_motor_dual', {
             pin1: pins.in1,
             pin2: pins.in2,
-            speed: clamped
+            speed: signed
         });
     }
 

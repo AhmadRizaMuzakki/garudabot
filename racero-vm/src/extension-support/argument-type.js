@@ -24,7 +24,7 @@ const ArgumentType = {
     NUMBER: 'number',
 
     /**
-     * Numeric value with range slider (−100…100), e.g. motor speed maju/mundur
+     * Numeric value with range slider (1…100), e.g. motor power (arah via menu)
      */
     SLIDER: 'slider',
 

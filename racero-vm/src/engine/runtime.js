@@ -79,7 +79,7 @@ const ArgumentTypeMap = (() => {
     };
     map[ArgumentType.SLIDER] = {
         shadow: {
-            // Motor: Range -100 - 100 (maju / mundur) + slider
+            // Motor power: Range 1 - 100 (arah via menu forward/backward)
             type: 'math_slider_motor',
             fieldName: 'NUM'
         }
