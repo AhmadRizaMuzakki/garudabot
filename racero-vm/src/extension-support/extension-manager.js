@@ -44,6 +44,7 @@ const builtinExtensions = {
 	fingers: () => require('../extensions/racero_fingers'),
 	expresive: () => require('../extensions/racero_expresive'),
 	recognition: () => require('../extensions/racero_recognition'),
+    nlp: () => require('../extensions/racero_nlp'),
     mrtpins: () => require('../extensions/racero_mrt_pins'),
     // Extension modul robot ESP32 (opsional, ditambah lewat Extension Library)
     robotesp32: () => require('../extensions/racero_robots_esp32')
