@@ -46,7 +46,9 @@ const builtinExtensions = {
 	recognition: () => require('../extensions/racero_recognition'),
     mrtpins: () => require('../extensions/racero_mrt_pins'),
     // Extension modul robot ESP32 (opsional, ditambah lewat Extension Library)
-    robotesp32: () => require('../extensions/racero_robots_esp32')
+    robotesp32: () => require('../extensions/racero_robots_esp32'),
+    // Image Classification + ML Lab (Teachable Machine style)
+    imageclassify: () => require('../extensions/racero_image_classify')
 };
 
 /**
