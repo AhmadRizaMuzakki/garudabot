@@ -62,6 +62,9 @@ import mrt_pinsInsetIconURL from './mrt_pins/inset.png';
 import robotesp32IconURL from './robotesp32/background.png';
 import robotesp32InsetIconURL from './robotesp32/inset.png';
 
+import imageclassifyIconURL from './imageclassify/background.png';
+import imageclassifyInsetIconURL from './imageclassify/inset.png';
+
 export default [
     {
         name: (
@@ -401,6 +404,20 @@ export default [
                 defaultMessage="ESP32 robot blocks: motor, sensor, MP3, IR, display."
                 description="Robots ESP32 extension description"
                 id="gui.extension.robotesp32.description"
+            />
+        ),
+        featured: true
+    },
+    {
+        name: 'Image Classification',
+        extensionId: 'imageclassify',
+        iconURL: imageclassifyIconURL,
+        insetIconURL: imageclassifyInsetIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Train a camera model in ML Lab, then use class blocks."
+                description="Image classification extension description"
+                id="gui.extension.imageclassify.description"
             />
         ),
         featured: true

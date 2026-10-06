@@ -1,10 +1,12 @@
 import bindAll from 'lodash.bindall';
 import PropTypes from 'prop-types';
 import React from 'react';
+import {connect} from 'react-redux';
 import VM from 'racero-vm';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import extensionLibraryContent from '../lib/libraries/extensions/index.jsx';
+import {openMlLab} from '../reducers/modals';
 
 import LibraryComponent from '../components/library/library.jsx';
 import extensionIcon from '../components/action-menu/icon--sprite.svg';
@@ -37,12 +39,16 @@ class ExtensionLibrary extends React.PureComponent {
             url = prompt(this.props.intl.formatMessage(messages.extensionUrl));
         }
         if (id && !item.disabled) {
-            if (this.props.vm.extensionManager.isExtensionLoaded(url)) {
+            const afterLoad = () => {
                 this.props.onCategorySelected(id);
+                if (id === 'imageclassify' && this.props.onOpenMlLab) {
+                    this.props.onOpenMlLab();
+                }
+            };
+            if (this.props.vm.extensionManager.isExtensionLoaded(url)) {
+                afterLoad();
             } else {
-                this.props.vm.extensionManager.loadExtensionURL(url).then(() => {
-                    this.props.onCategorySelected(id);
-                });
+                this.props.vm.extensionManager.loadExtensionURL(url).then(afterLoad);
             }
         }
     }
@@ -68,9 +74,14 @@ class ExtensionLibrary extends React.PureComponent {
 ExtensionLibrary.propTypes = {
     intl: intlShape.isRequired,
     onCategorySelected: PropTypes.func,
+    onOpenMlLab: PropTypes.func,
     onRequestClose: PropTypes.func,
     visible: PropTypes.bool,
     vm: PropTypes.instanceOf(VM).isRequired // eslint-disable-line react/no-unused-prop-types
 };
 
-export default injectIntl(ExtensionLibrary);
+const mapDispatchToProps = dispatch => ({
+    onOpenMlLab: () => dispatch(openMlLab())
+});
+
+export default injectIntl(connect(null, mapDispatchToProps)(ExtensionLibrary));
