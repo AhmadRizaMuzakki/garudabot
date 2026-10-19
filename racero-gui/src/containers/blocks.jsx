@@ -521,17 +521,20 @@ class Blocks extends React.Component {
 
         const buttonHandlers = extensionButtonHandlers[categoryInfo.id];
         if (buttonHandlers) {
-            const extension = this.props.vm.extensionManager.getExtensionInstance(categoryInfo.id);
-            if (extension) {
-                const toolboxWorkspace = this.workspace;
-                categoryInfo.blocks.forEach(blockInfo => {
-                    const callbackKey = blockInfo.info && blockInfo.info.func;
-                    const handlerName = buttonHandlers[callbackKey];
-                    if (handlerName && typeof extension[handlerName] === 'function') {
-                        toolboxWorkspace.registerButtonCallback(callbackKey, () => extension[handlerName]());
-                    }
-                });
-            }
+            const toolboxWorkspace = this.workspace;
+            categoryInfo.blocks.forEach(blockInfo => {
+                const callbackKey = blockInfo.info && blockInfo.info.func;
+                const handlerName = buttonHandlers[callbackKey];
+                if (handlerName) {
+                    toolboxWorkspace.registerButtonCallback(callbackKey, () => {
+                        const extension = this.props.vm.extensionManager.getExtensionInstance(categoryInfo.id);
+                        if (extension && typeof extension[handlerName] === 'function') {
+                            return extension[handlerName]();
+                        }
+                        return undefined;
+                    });
+                }
+            });
         }
 
         // Update the toolbox with new blocks if possible
