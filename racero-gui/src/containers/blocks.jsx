@@ -133,7 +133,7 @@ class Blocks extends React.Component {
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
 
-        const toolboxWorkspace = this.workspace.getFlyout().getWorkspace();
+        const toolboxWorkspace = this.workspace;
 
         const varListButtonCallback = type =>
             (() => this.RaceroBlocks.Variables.createVariable(this.workspace, null, type));
@@ -523,7 +523,7 @@ class Blocks extends React.Component {
         if (buttonHandlers) {
             const extension = this.props.vm.extensionManager.getExtensionInstance(categoryInfo.id);
             if (extension) {
-                const toolboxWorkspace = this.workspace.getFlyout().getWorkspace();
+                const toolboxWorkspace = this.workspace;
                 categoryInfo.blocks.forEach(blockInfo => {
                     const callbackKey = blockInfo.info && blockInfo.info.func;
                     const handlerName = buttonHandlers[callbackKey];
