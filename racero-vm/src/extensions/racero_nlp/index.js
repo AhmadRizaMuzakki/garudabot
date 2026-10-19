@@ -68,43 +68,87 @@ class RaceroNlp {
         };
     }
 
-    downloadCsvTemplate () {
-        if (typeof document === 'undefined' || typeof Blob === 'undefined' ||
-            typeof URL === 'undefined' || !URL.createObjectURL) return;
+    async downloadCsvTemplate () {
+        const tauri = typeof window === 'object' ? window.__TAURI__ : null;
+        if (tauri) {
+            try {
+                const filePath = await tauri.core.invoke('plugin:dialog|save', {
+                    options: {
+                        defaultPath: 'nlp-template.csv',
+                        filters: [{name: 'CSV', extensions: ['csv']}]
+                    }
+                });
+                if (filePath) {
+                    await tauri.core.invoke('plugin:fs|write_text_file', {
+                        path: filePath,
+                        contents: createCsvTemplate()
+                    });
+                }
+            } catch (error) {
+                log.error(`Failed to save NLP CSV template: ${error.message}`);
+            }
+            return;
+        }
 
-        const blob = new Blob([createCsvTemplate()], {type: 'text/csv;charset=utf-8'});
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'nlp-template.csv';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        const canDownloadInBrowser = typeof document === 'object' &&
+            typeof Blob === 'function' && typeof URL === 'function' &&
+            typeof URL.createObjectURL === 'function';
+        if (canDownloadInBrowser) {
+            const blob = new Blob([createCsvTemplate()], {type: 'text/csv;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'nlp-template.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+        }
     }
 
-    importCsv () {
-        if (typeof document === 'undefined' || typeof FileReader === 'undefined') return;
-
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.csv';
-        input.onchange = () => {
-            const file = input.files && input.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = () => {
-                try {
-                    this.classifier.addSamples(parseCsv(reader.result));
-                } catch (error) {
-                    log.error(`Failed to import NLP CSV: ${error.message}`);
+    async importCsv () {
+        const tauri = typeof window === 'object' ? window.__TAURI__ : null;
+        if (tauri) {
+            try {
+                const selectedPath = await tauri.core.invoke('plugin:dialog|open', {
+                    options: {
+                        multiple: false,
+                        filters: [{name: 'CSV', extensions: ['csv']}]
+                    }
+                });
+                const filePath = Array.isArray(selectedPath) ? selectedPath[0] : selectedPath;
+                if (filePath) {
+                    const csv = await tauri.core.invoke('plugin:fs|read_text_file', {path: filePath});
+                    this.classifier.addSamples(parseCsv(csv));
                 }
+            } catch (error) {
+                log.error(`Failed to import NLP CSV: ${error.message}`);
+            }
+            return;
+        }
+
+        const canImportInBrowser = typeof document === 'object' && typeof FileReader === 'function';
+        if (canImportInBrowser) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv';
+            input.onchange = () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        this.classifier.addSamples(parseCsv(reader.result));
+                    } catch (error) {
+                        log.error(`Failed to import NLP CSV: ${error.message}`);
+                    }
+                };
+                reader.onerror = () => log.error('Failed to read NLP CSV file.');
+                reader.readAsText(file);
             };
-            reader.onerror = () => log.error('Failed to read NLP CSV file.');
-            reader.readAsText(file);
-        };
-        input.click();
+            input.click();
+        }
     }
 
     addSample (args) {

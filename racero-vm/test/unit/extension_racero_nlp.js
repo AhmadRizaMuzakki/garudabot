@@ -85,3 +85,47 @@ test('NLP buttons are registered as supported extension callbacks', t => {
     runtime._registerExtensionPrimitives(new RaceroNlp(runtime).getInfo());
     t.end();
 });
+
+test('CSV buttons use Tauri dialogs and filesystem when running in the app', async t => {
+    const originalWindow = Object.getOwnPropertyDescriptor(global, 'window');
+    const extension = new RaceroNlp({});
+    const calls = [];
+    global.window = {
+        __TAURI__: {
+            core: {
+                invoke: (command, args) => {
+                    calls.push({command, args});
+                    if (command === 'plugin:dialog|save') {
+                        return Promise.resolve('C:/projects/nlp-template.csv');
+                    }
+                    if (command === 'plugin:dialog|open') {
+                        return Promise.resolve('C:/projects/training.csv');
+                    }
+                    if (command === 'plugin:fs|read_text_file') {
+                        return Promise.resolve('text,class\nhello,greeting');
+                    }
+                    return Promise.resolve();
+                }
+            }
+        }
+    };
+
+    await extension.downloadCsvTemplate();
+    await extension.importCsv();
+
+    t.same(calls.map(call => call.command), [
+        'plugin:dialog|save',
+        'plugin:fs|write_text_file',
+        'plugin:dialog|open',
+        'plugin:fs|read_text_file'
+    ]);
+    t.same(calls[1].args, {
+        path: 'C:/projects/nlp-template.csv',
+        contents: 'text,class\r\n'
+    });
+    t.same(extension.classifier.samples, [{text: 'hello', label: 'greeting'}]);
+
+    if (originalWindow) Object.defineProperty(global, 'window', originalWindow);
+    else delete global.window;
+    t.end();
+});
