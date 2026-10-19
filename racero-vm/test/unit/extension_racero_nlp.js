@@ -13,6 +13,8 @@ test('text classifier trains, predicts, and resets', t => {
     t.same(classifier.classes, ['kucing', 'anjing']);
     t.equal(classifier.predict('ikan'), 'kucing');
     t.equal(classifier.predict('tulang'), 'anjing');
+    t.equal(classifier.predict('KUCING   SUKA IKAN'), 'kucing');
+    t.equal(classifier.predict('teks yang belum pernah dilatih'), '');
 
     classifier.addSample('ikan segar', 'kucing');
     t.equal(classifier.isTrained, false);

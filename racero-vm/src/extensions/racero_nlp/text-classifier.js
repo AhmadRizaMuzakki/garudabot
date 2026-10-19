@@ -1,5 +1,9 @@
 const tokenize = text => String(text).toLowerCase()
     .match(/[\p{L}\p{N}]+/gu) || [];
+const normalizeText = text => String(text)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 
 class TextClassifier {
     constructor () {
@@ -28,8 +32,17 @@ class TextClassifier {
     train () {
         const vocabulary = new Set();
         const classModels = new Map();
+        const exactMatches = new Map();
 
         this.samples.forEach(sample => {
+            const normalizedText = normalizeText(sample.text);
+            let exactLabels = exactMatches.get(normalizedText);
+            if (!exactLabels) {
+                exactLabels = new Map();
+                exactMatches.set(normalizedText, exactLabels);
+            }
+            exactLabels.set(sample.label, (exactLabels.get(sample.label) || 0) + 1);
+
             let classModel = classModels.get(sample.label);
             if (!classModel) {
                 classModel = {sampleCount: 0, tokenCount: 0, tokenFrequencies: new Map()};
@@ -44,7 +57,7 @@ class TextClassifier {
             });
         });
 
-        this.model = {classModels, vocabularySize: vocabulary.size};
+        this.model = {classModels, vocabulary, exactMatches};
         this.isTrained = this.samples.length > 0 && this.classes.length > 0;
         return this.isTrained;
     }
@@ -52,17 +65,32 @@ class TextClassifier {
     predict (text) {
         if (!this.isTrained || !this.model) return '';
 
+        const exactLabels = this.model.exactMatches.get(normalizeText(text));
+        if (exactLabels) {
+            let bestLabel = '';
+            let bestCount = 0;
+            exactLabels.forEach((count, label) => {
+                if (count > bestCount) {
+                    bestLabel = label;
+                    bestCount = count;
+                }
+            });
+            return bestLabel;
+        }
+
         const tokens = tokenize(text);
+        const knownTokens = tokens.filter(token => this.model.vocabulary.has(token));
+        if (!knownTokens.length) return '';
+
         let bestClass = '';
         let bestScore = -Infinity;
         this.classes.forEach(label => {
             const classModel = this.model.classModels.get(label);
             let score = Math.log(classModel.sampleCount / this.samples.length);
-            tokens.forEach(token => {
-                if (!this.model.vocabularySize) return;
+            knownTokens.forEach(token => {
                 const frequency = classModel.tokenFrequencies.get(token) || 0;
                 score += Math.log((frequency + 1) /
-                    (classModel.tokenCount + this.model.vocabularySize));
+                    (classModel.tokenCount + this.model.vocabulary.size));
             });
             if (score > bestScore) {
                 bestClass = label;
