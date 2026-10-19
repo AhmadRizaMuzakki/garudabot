@@ -62,6 +62,8 @@ import mrt_pinsInsetIconURL from './mrt_pins/inset.png';
 import robotesp32IconURL from './robotesp32/background.png';
 import robotesp32InsetIconURL from './robotesp32/inset.png';
 
+import nlpIconURL from './nlp/background.png';
+import nlpInsetIconURL from './nlp/inset.png';
 export default [
     {
         name: (
@@ -401,6 +403,20 @@ export default [
                 defaultMessage="ESP32 robot blocks: motor, sensor, MP3, IR, display."
                 description="Robots ESP32 extension description"
                 id="gui.extension.robotesp32.description"
+            />
+        ),
+        featured: true
+    },
+    {
+        name: 'NLP',
+        extensionId: 'nlp',
+        iconURL: nlpIconURL,
+        insetIconURL: nlpInsetIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Train and use a text classifier."
+                description="NLP extension description"
+                id="gui.extension.nlp.description"
             />
         ),
         featured: true

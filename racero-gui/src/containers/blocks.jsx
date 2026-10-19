@@ -51,6 +51,13 @@ const DroppableBlocks = DropAreaHOC([
     DragConstants.BACKPACK_CODE
 ])(BlocksComponent);
 
+const extensionButtonHandlers = {
+    nlp: {
+        NLP_DOWNLOAD_CSV_TEMPLATE: 'downloadCsvTemplate',
+        NLP_IMPORT_CSV: 'importCsv'
+    }
+};
+
 class Blocks extends React.Component {
     constructor (props) {
         super(props);
@@ -511,6 +518,21 @@ class Blocks extends React.Component {
                 .map(fieldTypeName => categoryInfo.customFieldTypes[fieldTypeName].scratchBlocksDefinition));
         defineBlocks(categoryInfo.menus);
         defineBlocks(categoryInfo.blocks);
+
+        const buttonHandlers = extensionButtonHandlers[categoryInfo.id];
+        if (buttonHandlers) {
+            const extension = this.props.vm.extensionManager.getExtensionInstance(categoryInfo.id);
+            if (extension) {
+                const toolboxWorkspace = this.workspace.getFlyout().getWorkspace();
+                categoryInfo.blocks.forEach(blockInfo => {
+                    const callbackKey = blockInfo.info && blockInfo.info.func;
+                    const handlerName = buttonHandlers[callbackKey];
+                    if (handlerName && typeof extension[handlerName] === 'function') {
+                        toolboxWorkspace.registerButtonCallback(callbackKey, () => extension[handlerName]());
+                    }
+                });
+            }
+        }
 
         // Update the toolbox with new blocks if possible
         const toolboxXML = this.getToolboxXML();
