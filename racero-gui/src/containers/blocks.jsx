@@ -51,6 +51,13 @@ const DroppableBlocks = DropAreaHOC([
     DragConstants.BACKPACK_CODE
 ])(BlocksComponent);
 
+const extensionButtonHandlers = {
+    nlp: {
+        NLP_DOWNLOAD_CSV_TEMPLATE: 'downloadCsvTemplate',
+        NLP_IMPORT_CSV: 'importCsv'
+    }
+};
+
 class Blocks extends React.Component {
     constructor (props) {
         super(props);
@@ -126,7 +133,7 @@ class Blocks extends React.Component {
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
 
-        const toolboxWorkspace = this.workspace.getFlyout().getWorkspace();
+        const toolboxWorkspace = this.workspace;
 
         const varListButtonCallback = type =>
             (() => this.RaceroBlocks.Variables.createVariable(this.workspace, null, type));
@@ -511,6 +518,24 @@ class Blocks extends React.Component {
                 .map(fieldTypeName => categoryInfo.customFieldTypes[fieldTypeName].scratchBlocksDefinition));
         defineBlocks(categoryInfo.menus);
         defineBlocks(categoryInfo.blocks);
+
+        const buttonHandlers = extensionButtonHandlers[categoryInfo.id];
+        if (buttonHandlers) {
+            const toolboxWorkspace = this.workspace;
+            categoryInfo.blocks.forEach(blockInfo => {
+                const callbackKey = blockInfo.info && blockInfo.info.func;
+                const handlerName = buttonHandlers[callbackKey];
+                if (handlerName) {
+                    toolboxWorkspace.registerButtonCallback(callbackKey, () => {
+                        const extension = this.props.vm.extensionManager.getExtensionInstance(categoryInfo.id);
+                        if (extension && typeof extension[handlerName] === 'function') {
+                            return extension[handlerName]();
+                        }
+                        return undefined;
+                    });
+                }
+            });
+        }
 
         // Update the toolbox with new blocks if possible
         const toolboxXML = this.getToolboxXML();
