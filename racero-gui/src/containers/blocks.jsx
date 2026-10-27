@@ -51,6 +51,29 @@ const DroppableBlocks = DropAreaHOC([
     DragConstants.BACKPACK_CODE
 ])(BlocksComponent);
 
+const extensionButtonHandlers = {
+    nlp: {
+        NLP_DOWNLOAD_CSV_TEMPLATE: 'downloadCsvTemplate',
+        NLP_IMPORT_CSV: 'importCsv'
+    }
+};
+
+const registerExtensionButtons = (workspace, vm, extensionId) => {
+    const buttonHandlers = extensionButtonHandlers[extensionId];
+    if (!buttonHandlers) return;
+
+    Object.keys(buttonHandlers).forEach(callbackKey => {
+        const handlerName = buttonHandlers[callbackKey];
+        workspace.registerButtonCallback(callbackKey, () => {
+            const extension = vm.extensionManager.getExtensionInstance(extensionId);
+            if (extension && typeof extension[handlerName] === 'function') {
+                return extension[handlerName]();
+            }
+            return undefined;
+        });
+    });
+};
+
 class Blocks extends React.Component {
     constructor (props) {
         super(props);
@@ -126,17 +149,15 @@ class Blocks extends React.Component {
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
 
-        const toolboxWorkspace = this.workspace.getFlyout().getWorkspace();
-
         const varListButtonCallback = type =>
             (() => this.RaceroBlocks.Variables.createVariable(this.workspace, null, type));
         const procButtonCallback = () => {
             this.RaceroBlocks.Procedures.createProcedureDefCallback_(this.workspace);
         };
 
-        toolboxWorkspace.registerButtonCallback('MAKE_A_VARIABLE', varListButtonCallback(''));
-        toolboxWorkspace.registerButtonCallback('MAKE_A_LIST', varListButtonCallback('list'));
-        toolboxWorkspace.registerButtonCallback('MAKE_A_PROCEDURE', procButtonCallback);
+        this.workspace.registerButtonCallback('MAKE_A_VARIABLE', varListButtonCallback(''));
+        this.workspace.registerButtonCallback('MAKE_A_LIST', varListButtonCallback('list'));
+        this.workspace.registerButtonCallback('MAKE_A_PROCEDURE', procButtonCallback);
 
         // Store the xml of the toolbox that is actually rendered.
         // This is used in componentDidUpdate instead of prevProps, because
@@ -511,6 +532,8 @@ class Blocks extends React.Component {
                 .map(fieldTypeName => categoryInfo.customFieldTypes[fieldTypeName].scratchBlocksDefinition));
         defineBlocks(categoryInfo.menus);
         defineBlocks(categoryInfo.blocks);
+
+        registerExtensionButtons(this.workspace, this.props.vm, categoryInfo.id);
 
         // Update the toolbox with new blocks if possible
         const toolboxXML = this.getToolboxXML();
