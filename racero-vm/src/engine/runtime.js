@@ -1279,7 +1279,13 @@ class Runtime extends EventEmitter {
      */
     _convertButtonForRaceroBlocks (buttonInfo) {
         // for now we only support these pre-defined callbacks handled in racero-blocks
-        const supportedCallbackKeys = ['MAKE_A_LIST', 'MAKE_A_PROCEDURE', 'MAKE_A_VARIABLE'];
+        const supportedCallbackKeys = [
+            'MAKE_A_LIST',
+            'MAKE_A_PROCEDURE',
+            'MAKE_A_VARIABLE',
+            'NLP_DOWNLOAD_CSV_TEMPLATE',
+            'NLP_IMPORT_CSV'
+        ];
         if (supportedCallbackKeys.indexOf(buttonInfo.func) < 0) {
             log.error(`Custom button callbacks not supported yet: ${buttonInfo.func}`);
         }
