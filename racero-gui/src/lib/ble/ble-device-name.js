@@ -2,9 +2,10 @@
  * Pengaturan nama advertising BLE (manual + batch CSV dari Excel).
  *
  * Alur singkat:
- * 1. User isi nama / import CSV → disimpan di localStorage + Redux
+ * 1. User isi nama / import CSV → disimpan per board di localStorage + Redux
  * 2. Saat Upload ESP32, Rust inject: GarudabotBleOta::begin("Nama")
  * 3. Board reboot → advertise dengan nama itu
+ * Board tanpa BLE (MRT, Uno) tidak memakai nama ini.
  *
  * Catatan Windows: nama BLE dari OS sering kosong; UI bisa
  * menampilkan nama hasil flash terakhir sebagai fallback.
@@ -17,6 +18,7 @@ export const DEFAULT_BLE_DEVICE_NAME = 'Garudabot';
 export const BLE_NAME_MAX_LEN = 15;
 
 const BLE_NAME_STORAGE_KEY = 'garudabot.bleDeviceName';
+const BLE_NAME_BY_BOARD_KEY = 'garudabot.bleDeviceNameByBoard';
 const BLE_BATCH_STORAGE_KEY = 'garudabot.bleNameBatch';
 const BLE_LAST_FLASHED_KEY = 'garudabot.lastFlashedBleName';
 
@@ -68,6 +70,49 @@ export const saveBleDeviceName = name => {
     const checked = sanitizeBleDeviceName(name);
     if (!checked.ok) return checked;
     try {
+        localStorage.setItem(BLE_NAME_STORAGE_KEY, checked.name);
+    } catch (e) { /* localStorage penuh / privat — abaikan */ }
+    return checked;
+};
+
+const loadBleNamesByBoard = () => {
+    try {
+        const raw = localStorage.getItem(BLE_NAME_BY_BOARD_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const out = {};
+        Object.keys(parsed).forEach(key => {
+            const checked = sanitizeBleDeviceName(parsed[key]);
+            if (checked.ok) out[key] = checked.name;
+        });
+        return out;
+    } catch (e) {
+        return {};
+    }
+};
+
+/**
+ * Nama BLE milik satu board.
+ * Peta kosong: nama lama diwariskan sekali (sebelum dipisah per board).
+ * Board yang belum punya slot sendiri mengembalikan null.
+ */
+export const loadBleNameForBoard = boardName => {
+    if (!boardName) return null;
+    const map = loadBleNamesByBoard();
+    if (map[boardName]) return map[boardName];
+    if (Object.keys(map).length === 0) return loadStoredBleDeviceName();
+    return null;
+};
+
+/** Simpan nama hanya untuk board ini, tanpa menimpa board lain. */
+export const saveBleNameForBoard = (boardName, name) => {
+    const checked = sanitizeBleDeviceName(name);
+    if (!checked.ok) return checked;
+    try {
+        const map = loadBleNamesByBoard();
+        if (boardName) map[boardName] = checked.name;
+        localStorage.setItem(BLE_NAME_BY_BOARD_KEY, JSON.stringify(map));
         localStorage.setItem(BLE_NAME_STORAGE_KEY, checked.name);
     } catch (e) { /* localStorage penuh / privat — abaikan */ }
     return checked;

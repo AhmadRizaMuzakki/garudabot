@@ -49,7 +49,9 @@ const builtinExtensions = {
     // Extension modul robot ESP32 (opsional, ditambah lewat Extension Library)
     robotesp32: () => require('../extensions/racero_robots_esp32'),
     // Image Classification + ML Lab (Teachable Machine style)
-    imageclassify: () => require('../extensions/racero_image_classify')
+    imageclassify: () => require('../extensions/racero_image_classify'),
+    // Maze Solving MRT (tampilan kategori dulu; block menyusul)
+    mazesolvingmrt: () => require('../extensions/racero_maze_solving_mrt')
 };
 
 /**

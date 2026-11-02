@@ -1,0 +1,26 @@
+menu.hunaupload=Huna upload
+menu.bootloader=Bootloader
+
+32.name=MRT 3
+32.upload.tool=avrdude
+32.upload.protocol=urclock
+32.upload.speed=115200
+32.upload.maximum_size=32384
+32.upload.maximum_data_size=2048
+32.build.mcu=atmega32
+32.build.f_cpu=16000000L
+32.build.board=AVR_ATmega32
+32.build.core=MightyCore:MCUdude_corefiles
+32.build.variant=MightyCore:standard
+32.ltoarcmd=avr-ar
+
+32.menu.hunaupload.enabled=Enabled
+32.menu.hunaupload.disabled=Disabled
+
+# Bootloader pabrik MRT 3 (protokol AVR109 "SB01MRT") ditangani langsung oleh
+# Garudabot (bukan avrdude). Pilihan ini hanya menentukan urutan percobaan:
+# mrt = coba bootloader MRT dulu lalu urclock; urclock = sebaliknya.
+32.menu.bootloader.mrt=MRT (MY ROBOT TIME)
+32.menu.bootloader.mrt.upload.protocol=urclock
+32.menu.bootloader.urclock=Urclock (Huna)
+32.menu.bootloader.urclock.upload.protocol=urclock

@@ -171,7 +171,7 @@
     "gui.boardConnection.bleRescanShort": "Cari",
     "gui.boardConnection.blePairingShort": "...",
     "gui.boardConnection.noBleBoardsShort": "Belum ketemu. Klik Cari.",
-    "gui.boardConnection.bleScanStatusShort": "Mencari board…",
+    "gui.boardConnection.bleScanStatusShort": "Mencari boardâ€¦",
     "gui.boardConnection.bleScanNotFound": "Scratch Link tidak menemukan board. Quit Scratch Link ? buka lagi. Pastikan board menyala, lalu Cari lagi.",
     "gui.boardConnection.bleScanFirst": "Cari BLE dulu (butuh Scratch Link).",
     "gui.boardConnection.usbTitleEsp32Short": "USB",

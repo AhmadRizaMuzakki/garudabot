@@ -46,7 +46,6 @@ class RaceroRobotsEsp32 {
             color2: '#3373CC',
             color3: '#2E66C2',
             blocks: [
-                'label:General',
                 {opcode: 'generateCode', blockType: BlockType.HAT, text: 'Generate Code'},
                 {opcode: 'serialPrint', blockType: BlockType.COMMAND, text: 'Serial print [TEXT] newline [NEWLINE]', arguments: {
                     TEXT: {type: ArgumentType.STRING, defaultValue: '100'},

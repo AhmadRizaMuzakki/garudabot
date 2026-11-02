@@ -47,6 +47,17 @@ impl CompileJobState {
         self.cancelled.store(true, Ordering::SeqCst);
         self.take_and_kill();
     }
+
+    /// Flag cancel saat ini (dipakai uploader non-arduino-cli, mis. bootloader MRT).
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// Reset flag cancel sebelum tahap upload baru dimulai.
+    pub(crate) fn reset_cancel(&self) {
+        self.cancelled.store(false, Ordering::SeqCst);
+        self.clear_child();
+    }
 }
 
 /// Batalkan compile/upload yang sedang berjalan (dipanggil tombol Cancel di UI).
@@ -97,6 +108,10 @@ pub(crate) enum QuietPhase {
     Verbose,
     Compile,
     Upload,
+    /// MRT 3 / Huna: "Starting compiler..." plus baris ukuran sketch penuh.
+    AvrCompile,
+    /// Upload urclock Huna: hanya error, tanpa heartbeat.
+    AvrUpload,
 }
 
 /// Jalankan arduino-cli.
@@ -121,8 +136,11 @@ pub(crate) async fn run_with_logs(
         QuietPhase::Compile => {
             let _ = app.emit("compiler-log", "Mengompilasi...\n");
         }
-        QuietPhase::Upload => {
-            // "Upload ke COMx..." sudah di-emit pemanggil.
+        QuietPhase::AvrCompile => {
+            let _ = app.emit("compiler-log", "Starting compiler...\n");
+        }
+        QuietPhase::Upload | QuietPhase::AvrUpload => {
+            // "Upload ke COMx..." sudah di-emit pemanggil (kecuali MRT/Huna).
         }
     }
 
@@ -135,6 +153,7 @@ pub(crate) async fn run_with_logs(
     // bentrok header dengan bundel weeecode (ESP32PWM). Pakai user dir kosong
     // + --libraries dari append_libraries saja.
     let isolated_user = isolated_sketchbook_dir();
+    let _ = install_racero_avr_platform(&isolated_user);
     let mut exit_code = 0;
     let (mut rx, child) = sidecar
         .env("ARDUINO_DIRECTORIES_USER", &isolated_user)
@@ -206,8 +225,11 @@ pub(crate) async fn run_with_logs(
                                         QuietPhase::Compile => "Compile selesai.\n",
                                         QuietPhase::Upload => "Flash selesai.\n",
                                         QuietPhase::Verbose => "Selesai.\n",
+                                        QuietPhase::AvrCompile | QuietPhase::AvrUpload => "",
                                     };
-                                    let _ = app.emit("compiler-log", done);
+                                    if !done.is_empty() {
+                                        let _ = app.emit("compiler-log", done);
+                                    }
                                 } else {
                                     let _ = app.emit(
                                         "compiler-log",
@@ -224,7 +246,9 @@ pub(crate) async fn run_with_logs(
                     _ => {}
                 }
             }
-            _ = heartbeat.tick(), if quiet => {
+            _ = heartbeat.tick(), if quiet
+                && phase != QuietPhase::AvrCompile
+                && phase != QuietPhase::AvrUpload => {
                 heartbeat_n += 1;
                 let msg = match phase {
                     QuietPhase::Compile => {
@@ -233,7 +257,9 @@ pub(crate) async fn run_with_logs(
                     QuietPhase::Upload => {
                         format!("…masih mengunggah ({})\n", heartbeat_n)
                     }
-                    QuietPhase::Verbose => String::new(),
+                    QuietPhase::Verbose | QuietPhase::AvrCompile | QuietPhase::AvrUpload => {
+                        String::new()
+                    }
                 };
                 if !msg.is_empty() {
                     let _ = app.emit("compiler-log", msg);
@@ -282,6 +308,10 @@ impl QuietUploadProgress {
 
         // Error penting (setelah filter noise di atas).
         if lower.contains("error:")
+            || lower.contains("error during")
+            || lower.contains("not found")
+            || lower.contains("not installed")
+            || lower.contains("unknown package")
             || lower.contains(" fatal")
             || lower.starts_with("fatal")
             || lower.contains("traceback")
@@ -291,6 +321,12 @@ impl QuietUploadProgress {
             || lower.contains("no serial data")
             || lower.contains("wrong boot mode")
             || (lower.contains("failed") && !lower.contains("vid/pid"))
+        {
+            return Some(format!("{}\n", t));
+        }
+
+        if phase == QuietPhase::AvrCompile
+            && (lower.starts_with("sketch uses") || lower.starts_with("global variables use"))
         {
             return Some(format!("{}\n", t));
         }
@@ -347,6 +383,99 @@ pub(crate) fn libraries_dir(app: &AppHandle) -> Option<PathBuf> {
 
 /// Sketchbook kosong agar library user (Documents/Arduino/libraries) tidak
 /// ikut di-resolve saat compile — cegah konflik ESP32Servo vs weeecode.
+/// Salin platform `racero:avr` ke sketchbook dan arahkan compiler ke avr-gcc yang sudah terpasang.
+pub(crate) fn install_racero_avr_platform(sketchbook: &str) -> Result<(), String> {
+    let source = bundled_racero_avr_dir().ok_or("Platform racero:avr tidak ada di aplikasi.")?;
+    let dest = PathBuf::from(sketchbook)
+        .join("hardware")
+        .join("racero")
+        .join("avr");
+    copy_dir_files(&source, &dest)?;
+    if let Some(local) = racero_platform_local_txt() {
+        fs::write(dest.join("platform.local.txt"), local)
+            .map_err(|e| format!("platform.local.txt: {}", e))?;
+    }
+    Ok(())
+}
+
+fn bundled_racero_avr_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?.to_path_buf();
+    for _ in 0..6 {
+        let candidate = dir.join("hardware").join("racero").join("avr");
+        if candidate.join("boards.txt").is_file() {
+            return Some(candidate);
+        }
+        let nested = dir
+            .join("src-tauri")
+            .join("hardware")
+            .join("racero")
+            .join("avr");
+        if nested.join("boards.txt").is_file() {
+            return Some(nested);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
+
+fn racero_platform_local_txt() -> Option<String> {
+    let data = std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(PathBuf::from)
+        .map(|p| p.join("Arduino15").join("packages"))?;
+    let gcc = newest_tool_bin(&data.join("arduino").join("tools").join("avr-gcc"), "avr-gcc.exe")?;
+    let gcc_root = gcc.parent()?.parent()?.to_string_lossy().replace('\\', "/");
+    let avrdude = newest_tool_bin(
+        &data.join("MightyCore").join("tools").join("avrdude"),
+        "avrdude.exe",
+    )
+    .or_else(|| newest_tool_bin(&data.join("arduino").join("tools").join("avrdude"), "avrdude.exe"))?;
+    let avrdude_root = avrdude
+        .parent()?
+        .parent()?
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some(format!(
+        "compiler.path={gcc_root}/bin/\n\
+         tools.avrdude.path={avrdude_root}\n\
+         tools.avrdude.cmd.path={avrdude_root}/bin/avrdude\n\
+         tools.avrdude.config.path={avrdude_root}/etc/avrdude.conf\n\
+         recipe.objcopy.progmem.pattern.windows=cmd /C exit 0\n\
+         recipe.hooks.objcopy.postobjcopy.1.pattern.windows=cmd /C exit 0\n\
+         recipe.hooks.savehex.presavehex.1.pattern.windows=cmd /C exit 0\n\
+         recipe.hooks.savehex.presavehex.2.pattern.windows=cmd /C exit 0\n"
+    ))
+}
+
+fn newest_tool_bin(tool_root: &Path, exe_name: &str) -> Option<PathBuf> {
+    let mut found: Vec<PathBuf> = fs::read_dir(tool_root)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("bin").join(exe_name))
+        .filter(|path| path.is_file())
+        .collect();
+    found.sort();
+    found.pop()
+}
+
+fn copy_dir_files(source: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("racero:avr: {}", e))?;
+    for entry in fs::read_dir(source).map_err(|e| format!("racero:avr: {}", e))? {
+        let entry = entry.map_err(|e| format!("racero:avr: {}", e))?;
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_files(&from, &to)?;
+        } else {
+            fs::copy(&from, &to).map_err(|e| format!("racero:avr: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn isolated_sketchbook_dir() -> String {
     let root = if let Ok(local) = std::env::var("LOCALAPPDATA") {
         PathBuf::from(local).join("Garudabot").join("arduino-sketchbook")

@@ -7,6 +7,7 @@ import {startBleLive, stopBleLive} from '../lib/ble/ble-live-session.js';
 import {setLiveTransport} from '../lib/live-transport.js';
 import {
     saveLastFlashedBleName,
+    loadBleNameForBoard,
     loadStoredBatch,
     saveStoredBatch
 } from '../lib/ble/ble-device-name.js';
@@ -15,10 +16,15 @@ import {closeSerialMonitorForUpload} from './debug-panel.jsx';
 import {setSerialStatus, appendDebugLog} from '../reducers/debug-panel';
 import {isAppDebug} from '../lib/app-debug.js';
 
+/** Board keluarga MRT (MRT 3 / MRT X / Huna Robo v2) → dialog compiler Blockedit. */
+const MRT_FQBN_PREFIX = 'racero:avr:32';
+
 /**
  * Overlay compile/upload.
  * - USB (COMx): Rust flash lewat arduino-cli.
  * - Bluetooth (`ble:<id>`): Rust compile + inject → frontend kirim .bin lewat BLE native.
+ * - Board MRT 3 / Huna: dialog "Compiling & Uploading Program..." (log hijau,
+ *   progress bar, "Please press reset button...").
  *
  * Log di-batch (~200ms) supaya PC lama tidak re-render tiap baris compiler.
  */
@@ -27,7 +33,9 @@ class BoardUploaderOverlay extends React.Component {
         super(props);
         this.state = {
             logs: '',
-            isCompiling: true
+            isCompiling: true,
+            progress: 0,
+            indeterminate: true
         };
 
         this.bottomRef = null;
@@ -36,10 +44,13 @@ class BoardUploaderOverlay extends React.Component {
         };
 
         this.unlisten = null;
+        this.unlistenMrt = null;
         this.bleLink = null;
         this._logBuffer = '';
         this._logFlushTimer = null;
         this._cancelled = false;
+        this._mrtFinished = false;
+        this._lastMrtLine = '';
     }
 
     componentDidMount() {
@@ -52,7 +63,14 @@ class BoardUploaderOverlay extends React.Component {
         if (this.props.isVisible && !prevProps.isVisible) {
             this.flushLogBuffer(true);
             this._cancelled = false;
-            this.setState({ logs: 'Memulai upload...\n', isCompiling: true }, () => {
+            this._mrtFinished = false;
+            this._lastMrtLine = '';
+            this.setState({
+                logs: '',
+                isCompiling: true,
+                progress: this.isMrtBoard() ? 6 : 0,
+                indeterminate: true
+            }, () => {
                 this.startCompilation();
             });
         }
@@ -77,13 +95,90 @@ class BoardUploaderOverlay extends React.Component {
                 this.unlisten();
             }
         }
+        await this.stopMrtListener();
     }
+
+    /** Nama board aktif di VM. */
+    getBoardName = () => (this.props.vm && this.props.vm.runtime &&
+        this.props.vm.runtime.boardConfig && this.props.vm.runtime.boardConfig.name) || 'Arduino Uno';
+
+    /** True bila board keluarga MRT/Huna lewat USB → dialog compiler + progress. */
+    isMrtBoard = () => {
+        const board = boards[this.getBoardName()];
+        const fqbn = (board && board.fqbn) || '';
+        const isBle = String(this.props.connectedDevice || '').startsWith('ble:');
+        return !isBle && fqbn.startsWith(MRT_FQBN_PREFIX);
+    };
+
+    /** Satu baris status MRT. Lewati ulang jika pesan sudah ada atau lebih pendek. */
+    appendStageLine = line => {
+        const text = String(line || '').trim();
+        if (!text) return;
+        const prev = this._lastMrtLine;
+        if (prev && (prev === text || prev.includes(text))) return;
+        this._lastMrtLine = text;
+        this.appendLog(`${text}\n`, true);
+    };
+
+    /** Event `mrt-download` dari Rust: {stage, progress, total, message}. */
+    handleMrtEvent = event => {
+        if (this._cancelled) return;
+        const payload = event.payload || {};
+        const stage = payload.stage;
+        const message = String(payload.message || '');
+        const progress = Number(payload.progress) || 0;
+        const total = Number(payload.total) || 0;
+
+        switch (stage) {
+        case 'wait_reset':
+            this.appendStageLine(message || 'Please press reset button...');
+            this.setState({progress: 48, indeterminate: false});
+            break;
+        case 'downloading': {
+            this.appendStageLine(message || 'Downloading...');
+            const pct = total > 0 ? 50 + Math.round((progress / total) * 49) : 55;
+            this.setState({progress: Math.min(99, pct), indeterminate: false});
+            break;
+        }
+        case 'fallback':
+            this.appendStageLine(message || 'Downloading...');
+            this.setState({indeterminate: true});
+            break;
+        case 'done':
+            this._mrtFinished = true;
+            this.appendStageLine(message || 'Please reset board to run program');
+            this.setState({progress: 100, indeterminate: false, isCompiling: false});
+            break;
+        case 'error':
+            this._mrtFinished = true;
+            this.appendStageLine(message || 'Download error');
+            this.setState({indeterminate: false, isCompiling: false});
+            break;
+        default:
+            break;
+        }
+    };
+
+    stopMrtListener = async () => {
+        if (!this.unlistenMrt) return;
+        const pending = this.unlistenMrt;
+        this.unlistenMrt = null;
+        try {
+            const unsubscribe = await pending;
+            if (typeof unsubscribe === 'function') unsubscribe();
+        } catch (e) { /* ignore */ }
+    };
 
     /** Tombol Cancel: hentikan arduino-cli + BLE OTA. */
     handleCancel = async () => {
         if (!this.state.isCompiling || this._cancelled) return;
         this._cancelled = true;
-        this.appendLog('\nMembatalkan upload...\n', true);
+        this._mrtFinished = true;
+        if (this.isMrtBoard()) {
+            this.appendStageLine('Downloading has been stopped');
+        } else {
+            this.appendLog('\nMembatalkan upload...\n', true);
+        }
 
         const tauri = window.__TAURI__;
         if (tauri && tauri.core) {
@@ -100,8 +195,10 @@ class BoardUploaderOverlay extends React.Component {
         }
 
         this.flushLogBuffer(true);
-        this.appendLog('Upload dibatalkan.\n', true);
-        this.setState({ isCompiling: false });
+        if (!this.isMrtBoard()) {
+            this.appendLog('Upload dibatalkan.\n', true);
+        }
+        this.setState({isCompiling: false, indeterminate: false});
     };
 
     /** Tulis log segera (pesan penting) atau lewat buffer. */
@@ -150,14 +247,21 @@ class BoardUploaderOverlay extends React.Component {
         if (!tauri) return;
 
         this._cancelled = false;
+        this._mrtFinished = false;
+        this._lastMrtLine = '';
 
         if (this.unlisten) {
             await this.unlisten();
             this.unlisten = null;
         }
+        await this.stopMrtListener();
         if (this.bleLink) {
             this.bleLink.close();
             this.bleLink = null;
+        }
+        const isMrt = this.isMrtBoard();
+        if (isMrt) {
+            this.unlistenMrt = tauri.event.listen('mrt-download', this.handleMrtEvent);
         }
         // Lepas sesi Live Mode BLE agar link BLE bebas untuk OTA.
         try {
@@ -186,6 +290,14 @@ class BoardUploaderOverlay extends React.Component {
                 this._logBuffer += payload.endsWith('\n') ? payload : `${payload}\n`;
                 this.scheduleLogFlush();
 
+                if (isMrt) {
+                    if (/Sketch uses|Global variables use/i.test(payload)) {
+                        this.setState({progress: 30, indeterminate: false});
+                    } else if (payload.includes('Loading')) {
+                        this.setState({progress: 42, indeterminate: false});
+                    }
+                }
+
                 if (payload.includes('Process finished') &&
                     !(this.props.connectedDevice || '').startsWith('ble:')) {
                     this.flushLogBuffer(true);
@@ -212,14 +324,17 @@ class BoardUploaderOverlay extends React.Component {
             }
 
             const isBle = String(this.props.connectedDevice || '').startsWith('ble:');
-            const bleName = this.props.bleDeviceName || 'Garudabot';
+            const usesBle = isBle || /esp32/i.test(board.fqbn || '');
+            const bleName = usesBle ?
+                (loadBleNameForBoard(boardName) || this.props.bleDeviceName || 'Garudabot') :
+                '';
 
             if (isBle) {
                 this.appendLog(
                     `Upload Bluetooth\nBoard: ${boardName}\nNama BLE: ${bleName}\n`,
                     true
                 );
-            } else {
+            } else if (usesBle) {
                 this.setState({ logs: '' });
                 this.appendLog(
                     `Upload USB → ${this.props.connectedDevice}\n` +
@@ -227,6 +342,15 @@ class BoardUploaderOverlay extends React.Component {
                     `Nama BLE: ${bleName}\n`,
                     true
                 );
+            } else if (!isMrt) {
+                this.setState({ logs: '' });
+                this.appendLog(
+                    `Upload USB → ${this.props.connectedDevice}\n` +
+                    `Board: ${boardName}\n`,
+                    true
+                );
+            } else {
+                this.setState({logs: '', progress: 6, indeterminate: true});
             }
 
             const result = await tauri.core.invoke('board_compile_and_flash', {
@@ -247,15 +371,37 @@ class BoardUploaderOverlay extends React.Component {
                 }
             }
 
-            this.markBleNameFlashed(bleName);
+            if (usesBle) this.markBleNameFlashed(bleName);
             this.flushLogBuffer(true);
-            this.appendLog(`Upload selesai (${bleName}).\n`, true);
-            this.setState({ isCompiling: false });
+            if (!isMrt) {
+                this.appendLog(
+                    usesBle ? `Upload selesai (${bleName}).\n` : 'Upload selesai.\n',
+                    true
+                );
+            }
+            this.setState({ isCompiling: false, indeterminate: false });
+            if (isMrt && !this._mrtFinished) {
+                this.handleMrtEvent({
+                    payload: {
+                        stage: 'done',
+                        progress: 1,
+                        total: 1,
+                        message: 'Please reset board to run program'
+                    }
+                });
+            }
         } catch (error) {
             this.flushLogBuffer(true);
             if (this._cancelled || this.isCancelledError(error)) {
-                this.appendLog('Upload dibatalkan.\n', true);
-                this.setState({ isCompiling: false });
+                if (!isMrt) this.appendLog('Upload dibatalkan.\n', true);
+                this.setState({ isCompiling: false, indeterminate: false });
+                return;
+            }
+            const message = String((error && error.message) || error || '');
+            if (isMrt) {
+                this._mrtFinished = true;
+                this.appendStageLine(message);
+                this.setState({isCompiling: false, indeterminate: false});
                 return;
             }
             this.setState(prevState => ({
@@ -395,6 +541,7 @@ class BoardUploaderOverlay extends React.Component {
     };
 
     render() {
+        const isMrt = this.props.isVisible && this.isMrtBoard();
         return (
             <BoardUploaderOverlayComponent
                 isVisible={this.props.isVisible}
@@ -403,6 +550,9 @@ class BoardUploaderOverlay extends React.Component {
                 logs={this.state.logs}
                 isCompiling={this.state.isCompiling}
                 setBottomRef={this.setBottomRef}
+                showProgress={isMrt}
+                progress={this.state.progress}
+                indeterminate={this.state.indeterminate}
             />
         );
     }

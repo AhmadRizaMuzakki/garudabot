@@ -16,7 +16,7 @@ import {startBleLive, stopBleLive, isBleLiveActive} from '../lib/ble/ble-live-se
 import {setLiveTransport} from '../lib/live-transport.js';
 import {
     DEFAULT_BLE_DEVICE_NAME,
-    saveBleDeviceName,
+    saveBleNameForBoard,
     importBleNameCsv,
     loadStoredBatch,
     saveStoredBatch,
@@ -452,7 +452,7 @@ class BoardConnectionDialog extends React.Component {
         });
     }
     applyBleName (name) {
-        const saved = saveBleDeviceName(name);
+        const saved = saveBleNameForBoard(this.getBoardName(), name);
         if (!saved.ok) {
             this.setState({ bleNameError: saved.error, bleNameDraft: saved.name });
             return false;

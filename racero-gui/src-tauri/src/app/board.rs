@@ -6,10 +6,22 @@ use serialport::{ClearBuffer, DataBits, Parity, StopBits, FlowControl};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 
+use crate::app::mrt_boot;
 use crate::app::serial_monitor::{self, SerialMonitorState};
 use crate::app::state::AppState;
 use crate::arduino_cli;
 use crate::ble::ota as ble_ota;
+
+/// Keluarga board ATmega32 (MRT 3 / MRT X / Huna Robo v2) — platform racero:avr.
+pub(crate) fn is_avr32_family(fqbn: &str) -> bool {
+    fqbn.starts_with("racero:avr:32")
+}
+
+/// Board MRT pabrik: coba bootloader MRT dulu, baru urclock.
+/// Huna (`bootloader=urclock`) kebalikannya.
+fn prefers_mrt_bootloader(fqbn: &str) -> bool {
+    is_avr32_family(fqbn) && !fqbn.contains("bootloader=urclock")
+}
 
 pub(crate) fn is_ipv4_address(value: &str) -> bool {
     let parts: Vec<&str> = value.split('.').collect();
@@ -98,8 +110,13 @@ pub(crate) async fn board_install_firmata(app: &AppHandle, port: &String, fqbn: 
         "--port".to_string(),
         port.clone(),
     ];
-    // Bundel GarudabotBleOta / WeELF (ESP32) + path library aman.
-    arduino_cli::append_libraries(app, &mut args);
+    // Bundel GarudabotBleOta / WeELF hanya untuk ESP32.
+    // Uno memakai Servo.h bawaan core AVR. Folder arduino-libraries berisi
+    // WeeeMakeDrive (architectures dulu `*`) dengan src/utility/Servo.h;
+    // --libraries mengalahkan Servo core sehingga #include <Servo.h> gagal.
+    if fqbn.contains("esp32") {
+        arduino_cli::append_libraries(app, &mut args);
+    }
     args.push(sketch_dir.to_str().unwrap().to_string());
 
     let isolated_user = arduino_cli::isolated_sketchbook_dir();
@@ -631,31 +648,81 @@ pub async fn board_compile_and_flash(
         "--fqbn".to_string(),
         fqbn_with_safe_upload_speed(&fqbn),
     ];
-    if fqbn == "racero:avr:32:hunaupload=enabled" {
+    if is_avr32_family(&fqbn) {
         compile_args.push("--build-property".to_string());
         compile_args.push("compiler.cpp.extra_flags=-DTIMSK1=TIMSK -DTIFR1=TIFR".to_string());
     }
     arduino_cli::append_compile_speed_args(&mut compile_args, Some(&build_path));
-    arduino_cli::append_libraries_quiet(&app, &mut compile_args);
+    // Folder arduino-libraries isinya library ESP32. Untuk AVR, Servo.h
+    // harus dari core (WeeeMakeDrive punya salinan Servo.h di src/utility).
+    if is_esp32 {
+        arduino_cli::append_libraries_quiet(&app, &mut compile_args);
+    }
     compile_args.push(sketch_path.clone());
 
-    let compile_code =
-        run_arduino_cli_quiet(&app, compile_args, arduino_cli::QuietPhase::Compile).await?;
+    let compile_phase = if is_avr32_family(&fqbn) {
+        arduino_cli::QuietPhase::AvrCompile
+    } else {
+        arduino_cli::QuietPhase::Compile
+    };
+    let compile_code = run_arduino_cli_quiet(&app, compile_args, compile_phase).await?;
     if compile_code != 0 {
+        if is_avr32_family(&fqbn) {
+            mrt_boot::emit_stage(&app, "error", 0, 0, "Compile gagal");
+        }
         return Err(format!("Compile gagal (exit code {}).", compile_code));
     }
 
+    if is_avr32_family(&fqbn) {
+        let _ = app.emit("compiler-log", "Loading\n");
+        let _ = app.emit("compiler-log", format!("{}\n", sketch_path));
+    }
+
     // 2) Sebelum upload: lepas handle COM lagi (Firmata/Live) lalu resolve port.
+    let avr32_usb = is_avr32_family(&fqbn) && !is_net;
     if !is_net {
-        let _ = app.emit("compiler-log", "Menyiapkan port USB...\n");
+        if !avr32_usb {
+            let _ = app.emit("compiler-log", "Menyiapkan port USB...\n");
+        }
         {
             let state = app.state::<AppState>();
             let _ = board_disconnect(state);
         }
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        upload_port = resolve_usb_serial_port_with_retry(&app, &upload_port, 4).await?;
+        // MRT/Huna: jangan probe port. Bootloader menunggu '#' setelah port dibuka.
+        if !avr32_usb {
+            upload_port = resolve_usb_serial_port_with_retry(&app, &upload_port, 4).await?;
+        }
         // COM10+ di Windows: esptool lebih andal dengan \\.\COM11
         upload_port = windows_port_path(&upload_port);
+    }
+
+    // 3) Keluarga ATmega32 (MRT 3 / MRT X / Huna): bootloader pabrik MRT (AVR109)
+    //    dan urclock (urboot). Urutan tergantung board; yang gagal → coba yang lain.
+    let hex_path = build_path.join(format!("{}.ino.hex", sketch_name));
+    let mut avr32_tried_mrt = false;
+    if avr32_usb {
+        if !hex_path.is_file() {
+            mrt_boot::emit_stage(&app, "error", 0, 0, "HEX tidak ditemukan");
+            return Err(format!("File HEX tidak ditemukan: {}", hex_path.display()));
+        }
+        app.state::<arduino_cli::CompileJobState>().reset_cancel();
+        if prefers_mrt_bootloader(&fqbn) {
+            avr32_tried_mrt = true;
+            match mrt_boot::flash_hex(&app, &upload_port, &hex_path).await {
+                Ok(mrt_boot::MrtOutcome::Flashed) => {
+                    return Ok("Compilation cycle complete.".to_string());
+                }
+                Ok(mrt_boot::MrtOutcome::NoBootloader) => {
+                    let _ = app.emit(
+                        "compiler-log",
+                        "Bootloader MRT tidak menjawab — mencoba urclock...\n",
+                    );
+                    mrt_boot::emit_stage(&app, "fallback", 0, 0, "Downloading...");
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        }
     }
 
     let mut upload_args = vec![
@@ -677,7 +744,7 @@ pub async fn board_compile_and_flash(
                 upload_port
             ),
         );
-    } else {
+    } else if !avr32_usb {
         let display = upload_port.trim_start_matches(r"\\.\");
         let _ = app.emit(
             "compiler-log",
@@ -685,8 +752,46 @@ pub async fn board_compile_and_flash(
         );
     }
 
-    let exit_code =
-        run_arduino_cli_quiet(&app, upload_args, arduino_cli::QuietPhase::Upload).await?;
+    if avr32_usb && !avr32_tried_mrt {
+        mrt_boot::emit_stage(&app, "wait_reset", 0, 0, "Please press reset button...");
+    }
+    let upload_phase = if avr32_usb {
+        arduino_cli::QuietPhase::AvrUpload
+    } else {
+        arduino_cli::QuietPhase::Upload
+    };
+    let upload_result = run_arduino_cli_quiet(&app, upload_args, upload_phase).await;
+    if avr32_usb {
+        if let Err(e) = &upload_result {
+            if !e.contains("dibatalkan") {
+                mrt_boot::emit_stage(&app, "error", 0, 0, e);
+            }
+        }
+    }
+    let exit_code = upload_result?;
+
+    if exit_code != 0 && avr32_usb {
+        if !avr32_tried_mrt {
+            let _ = app.emit(
+                "compiler-log",
+                "Urclock gagal — menunggu bootloader MRT (tekan tombol reset board)...\n",
+            );
+            app.state::<arduino_cli::CompileJobState>().reset_cancel();
+            match mrt_boot::flash_hex(&app, &upload_port, &hex_path).await {
+                Ok(mrt_boot::MrtOutcome::Flashed) => {
+                    return Ok("Compilation cycle complete.".to_string());
+                }
+                Ok(mrt_boot::MrtOutcome::NoBootloader) => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        mrt_boot::emit_stage(&app, "error", 0, 0, "Download error");
+        return Err(
+            "Download gagal: board tidak menjawab (bootloader MRT maupun urclock).\n\
+             Cek port COM, board menyala, kabel terpasang, dan baterai."
+                .to_string(),
+        );
+    }
 
     if exit_code != 0 {
         let hint = if is_net {
@@ -704,6 +809,15 @@ pub async fn board_compile_and_flash(
         return Err(format!("Upload gagal (exit code {}).{}", exit_code, hint));
     }
 
+    if avr32_usb {
+        mrt_boot::emit_stage(
+            &app,
+            "done",
+            1,
+            1,
+            "Please reset board to run program",
+        );
+    }
     Ok("Compilation cycle complete.".to_string())
 }
 

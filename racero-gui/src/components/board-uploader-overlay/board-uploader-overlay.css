@@ -48,6 +48,36 @@
   font-size: 14px;
 }
 
+.progress {
+  margin-top: 12px;
+  height: 18px;
+  background-color: #e4e4e4;
+  border: 1px solid #c5c5c5;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #8d8d8d;
+  transition: width 80ms linear;
+}
+
+.progress-marquee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background-color: #8d8d8d;
+  animation: upload-marquee 1.4s linear infinite;
+}
+
+@keyframes upload-marquee {
+  from { left: -35%; }
+  to { left: 100%; }
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;
