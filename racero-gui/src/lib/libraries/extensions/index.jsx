@@ -67,6 +67,9 @@ import nlpInsetIconURL from './imageclassify/inset.png';
 import imageclassifyIconURL from './imageclassify/background.png';
 import imageclassifyInsetIconURL from './imageclassify/inset.png';
 
+import mazesolvingmrtIconURL from './mazesolvingmrt/background.png';
+import mazesolvingmrtInsetIconURL from './mazesolvingmrt/inset.png';
+
 export default [
     {
         name: (
@@ -434,6 +437,20 @@ export default [
                 defaultMessage="Train a camera model in ML Lab, then use class blocks."
                 description="Image classification extension description"
                 id="gui.extension.imageclassify.description"
+            />
+        ),
+        featured: true
+    },
+    {
+        name: 'Maze Solving MRT',
+        extensionId: 'mazesolvingmrt',
+        iconURL: mazesolvingmrtIconURL,
+        insetIconURL: mazesolvingmrtInsetIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Solve mazes with MRT robots."
+                description="Maze Solving MRT extension description"
+                id="gui.extension.mazesolvingmrt.description"
             />
         ),
         featured: true

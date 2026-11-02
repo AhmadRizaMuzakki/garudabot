@@ -10,21 +10,34 @@ const BoardUploaderOverlayComponent = props => {
         logs,
         onClose,
         onCancel,
-        setBottomRef
+        setBottomRef,
+        showProgress,
+        progress,
+        indeterminate
     } = props;
 
     if (!isVisible) return null;
+
+    const pct = Math.max(0, Math.min(100, Number(progress) || 0));
 
     return (
         <div className={styles.overlay}>
             <div className={styles.modal}>
                 <h2 className={styles.title}>
                     {isCompiling ? (
-                        <FormattedMessage
-                            defaultMessage="Compiling & Uploading..."
-                            description="Message indicating that project is compiling and uploading the code"
-                            id="gui.cnu.compiling"
-                        />
+                        showProgress ? (
+                            <FormattedMessage
+                                defaultMessage="Compiling & Uploading Program..."
+                                description="Title while MRT 3 / Huna program is compiling and uploading"
+                                id="gui.cnu.compilingProgram"
+                            />
+                        ) : (
+                            <FormattedMessage
+                                defaultMessage="Compiling & Uploading..."
+                                description="Message indicating that project is compiling and uploading the code"
+                                id="gui.cnu.compiling"
+                            />
+                        )
                     ) : (
                         <FormattedMessage
                             defaultMessage="Finished"
@@ -38,6 +51,19 @@ const BoardUploaderOverlayComponent = props => {
                     {logs}
                     <div ref={setBottomRef} />
                 </div>
+
+                {showProgress && (
+                    <div className={styles.progress}>
+                        {indeterminate ? (
+                            <div className={styles.progressMarquee} />
+                        ) : (
+                            <div
+                                className={styles.progressFill}
+                                style={{width: `${pct}%`}}
+                            />
+                        )}
+                    </div>
+                )}
 
                 <div className={styles.footer}>
                     {isCompiling && (
@@ -85,7 +111,10 @@ BoardUploaderOverlayComponent.propTypes = {
     logs: PropTypes.string,
     onClose: PropTypes.func,
     onCancel: PropTypes.func,
-    setBottomRef: PropTypes.func
+    setBottomRef: PropTypes.func,
+    showProgress: PropTypes.bool,
+    progress: PropTypes.number,
+    indeterminate: PropTypes.bool
 };
 
 export default BoardUploaderOverlayComponent;

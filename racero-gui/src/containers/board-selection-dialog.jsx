@@ -6,8 +6,14 @@ import { connect } from 'react-redux';
 import {
     setSelectingStatus,
     setConnectionDetails,
-    setBoardName
+    setBoardName,
+    setBleDeviceName
 } from '../reducers/board';
+import {
+    DEFAULT_BLE_DEVICE_NAME,
+    loadBleNameForBoard,
+    saveBleNameForBoard
+} from '../lib/ble/ble-device-name.js';
 
 import { boards } from 'racero-boards';
 
@@ -66,6 +72,13 @@ class BoardSelectionDialog extends React.Component {
         this.props.onSetConnectionDetails(null);
         this.props.onSetBoardName(board.name);
 
+        const fqbn = (boards[board.name] && boards[board.name].fqbn) || '';
+        if (/esp32/i.test(fqbn)) {
+            const stored = loadBleNameForBoard(board.name) || DEFAULT_BLE_DEVICE_NAME;
+            const saved = saveBleNameForBoard(board.name, stored);
+            if (saved.ok) this.props.onSetBleDeviceName(saved.name);
+        }
+
         this.props.onSetSelecting(false);
     }
 
@@ -90,6 +103,7 @@ class BoardSelectionDialog extends React.Component {
 
 BoardSelectionDialog.propTypes = {
     isSelecting: PropTypes.bool,
+    onSetBleDeviceName: PropTypes.func,
     onSetBoardName: PropTypes.func,
     onSetConnectionDetails: PropTypes.func,
     onSetSelecting: PropTypes.func,
@@ -113,6 +127,7 @@ const mapDispatchToProps = dispatch => ({
     onSetSelecting: selecting => dispatch(setSelectingStatus(selecting)),
     onSetConnectionDetails: details => dispatch(setConnectionDetails(details)),
     onSetBoardName: name => dispatch(setBoardName(name)),
+    onSetBleDeviceName: name => dispatch(setBleDeviceName(name))
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(BoardSelectionDialog);

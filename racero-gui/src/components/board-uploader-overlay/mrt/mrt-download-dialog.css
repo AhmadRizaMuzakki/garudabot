@@ -1,0 +1,217 @@
+/*
+ * Tiruan dialog "Download" dari aplikasi MY ROBOT TIME (MRT3) — WinForms.
+ * Ukuran/posisi diambil dari frm_download & frm_downloadErrors asli
+ * (client 584x307 dan 569x288, font Microsoft Sans Serif 8.25pt).
+ */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 5000;
+}
+
+/* Jendela WinForms FixedDialog tanpa ControlBox */
+.window {
+  background-color: #f0f0f0;
+  border: 1px solid #6f6f6f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-family: "Microsoft Sans Serif", "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 11px; /* 8.25pt */
+  color: #000;
+  user-select: none;
+  box-sizing: content-box;
+}
+
+.title-bar {
+  height: 30px;
+  line-height: 30px;
+  background-color: #fff;
+  color: #000;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 12px; /* 9pt */
+  padding-left: 9px;
+  border-bottom: 1px solid #ededed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* === frm_download: client 584 x 307 === */
+.client {
+  position: relative;
+  width: 584px;
+  height: 307px;
+  background-color: #f0f0f0;
+}
+
+/* ProgressBar WritePBbar (41,15) 493x35, Style=Blocks (visual styles → hijau) */
+.progress {
+  position: absolute;
+  left: 41px;
+  top: 15px;
+  width: 493px;
+  height: 35px;
+  box-sizing: border-box;
+  background-color: #e6e6e6;
+  border: 1px solid #bcbcbc;
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background-color: #06b025;
+  transition: width 60ms linear;
+}
+
+/* Marquee saat panjang tidak diketahui (urclock fallback) */
+.progress-marquee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background-color: #06b025;
+  animation: marquee 2s linear infinite;
+}
+
+@keyframes marquee {
+  from { left: -30%; }
+  to { left: 100%; }
+}
+
+/* PictureBox pictureBox1 (111,62) 346x138, BackgroundImage pess_reset Stretch */
+.picture {
+  position: absolute;
+  left: 111px;
+  top: 62px;
+  width: 346px;
+  height: 138px;
+  display: block;
+  object-fit: fill;
+}
+
+/* Label lbl_msg (37,211) 493x21, MiddleCenter */
+.message {
+  position: absolute;
+  left: 37px;
+  top: 211px;
+  width: 493px;
+  height: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Button Cancel (229,247) 117x31 */
+.cancel-button {
+  position: absolute;
+  left: 229px;
+  top: 247px;
+  width: 117px;
+  height: 31px;
+}
+
+/* Tombol WinForms (Windows 10 visual style) */
+.win-button {
+  box-sizing: border-box;
+  background-color: #e1e1e1;
+  border: 1px solid #adadad;
+  color: #000;
+  font: inherit;
+  padding: 0;
+  cursor: default;
+  outline: none;
+}
+
+.win-button:hover {
+  background-color: #e5f1fb;
+  border-color: #0078d7;
+}
+
+.win-button:active {
+  background-color: #cce4f7;
+  border-color: #005499;
+}
+
+.win-button:focus {
+  border: 2px solid #0078d7;
+}
+
+/* === frm_downloadErrors: client 569 x 288, bg White === */
+.error-client {
+  position: relative;
+  width: 569px;
+  height: 288px;
+  background-color: #fff;
+}
+
+/* PictureBox (30,12) 509x205 downloadError */
+.error-picture {
+  position: absolute;
+  left: 30px;
+  top: 12px;
+  width: 509px;
+  height: 205px;
+  display: block;
+}
+
+/* Penyebab gagal (tambahan Garudabot) — di bawah gambar, kiri tombol Ok */
+.error-message {
+  position: absolute;
+  left: 30px;
+  top: 224px;
+  width: 390px;
+  height: 52px;
+  overflow: hidden;
+  color: #a00;
+  font-size: 11px;
+  line-height: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+/* Button Ok (432,240) 107x21 */
+.ok-button {
+  position: absolute;
+  left: 432px;
+  top: 240px;
+  width: 107px;
+  height: 21px;
+}
+
+/* === MessageBox "Downloading has been stopped" === */
+.msgbox-client {
+  position: relative;
+  min-width: 300px;
+  background-color: #fff;
+  padding: 24px 24px 20px 24px;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 12px;
+}
+
+.msgbox-footer {
+  background-color: #f0f0f0;
+  padding: 10px 11px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.msgbox-ok {
+  width: 88px;
+  height: 26px;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 12px;
+}
