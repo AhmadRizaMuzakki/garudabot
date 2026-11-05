@@ -11,20 +11,24 @@ test('text classifier trains, predicts, and resets', t => {
 
     t.equal(classifier.train(), true);
     t.same(classifier.classes, ['kucing', 'anjing']);
+    t.equal(classifier.classify('ikan').label, 'kucing');
+    t.equal(classifier.classify('tulang').label, 'anjing');
+    t.equal(classifier.classify('KUCING   SUKA IKAN').label, 'kucing');
+    t.equal(classifier.classify('KUCING   SUKA IKAN').confidence, 100);
+    t.ok(classifier.classify('ikan').confidence > 50);
     t.equal(classifier.predict('ikan'), 'kucing');
-    t.equal(classifier.predict('tulang'), 'anjing');
-    t.equal(classifier.predict('KUCING   SUKA IKAN'), 'kucing');
-    t.equal(classifier.predict('teks yang belum pernah dilatih'), '');
+    t.equal(classifier.classify('teks yang belum pernah dilatih').label, '');
+    t.equal(classifier.classify('teks yang belum pernah dilatih').confidence, 0);
 
     classifier.addSample('ikan segar', 'kucing');
     t.equal(classifier.isTrained, false);
-    t.equal(classifier.predict('ikan'), '');
+    t.equal(classifier.classify('ikan').label, '');
     classifier.train();
     classifier.reset();
     t.same(classifier.samples, []);
     t.same(classifier.classes, []);
     t.equal(classifier.isTrained, false);
-    t.equal(classifier.predict('ikan'), '');
+    t.equal(classifier.classify('ikan').label, '');
     t.end();
 });
 
@@ -34,7 +38,13 @@ test('CSV parser supports commas, escaped quotes, and newlines in fields', t => 
         {text: 'suka, "teh"', label: 'positif'},
         {text: 'baris satu\nbaris dua', label: 'negatif'}
     ]);
-    t.equal(createCsvTemplate(), 'text,class\r\n');
+    t.equal(createCsvTemplate(), [
+        'text,class',
+        'hello,greeting',
+        'good morning,greeting',
+        'goodbye,farewell',
+        'see you,farewell'
+    ].join('\r\n').concat('\r\n'));
     t.throws(() => parseCsv('wrong,header'), /header/);
     t.end();
 });
@@ -123,9 +133,17 @@ test('CSV buttons use Tauri dialogs and filesystem when running in the app', asy
     ]);
     t.same(calls[1].args, {
         path: 'C:/projects/nlp-template.csv',
-        contents: 'text,class\r\n'
+        contents: 'text,class\r\nhello,greeting\r\ngood morning,greeting\r\ngoodbye,farewell\r\nsee you,farewell\r\n'
     });
     t.same(extension.classifier.samples, [{text: 'hello', label: 'greeting'}]);
+    t.equal(extension.getSampleCount(), 1);
+    t.equal(extension.isModelTrained(), false);
+    extension.trainClassifier();
+    t.equal(extension.isModelTrained(), true);
+    t.equal(extension.isClass({TEXT: 'hello', CLASS: 'greeting'}), true);
+    t.equal(extension.isClass({TEXT: 'hello', CLASS: 'farewell'}), false);
+    t.equal(extension.getConfidence({TEXT: 'hello'}), 100);
+    t.same(extension.getClassMenu(), ['greeting']);
 
     if (originalWindow) Object.defineProperty(global, 'window', originalWindow);
     else delete global.window;

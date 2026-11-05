@@ -64,6 +64,9 @@ import robotesp32InsetIconURL from './robotesp32/inset.png';
 
 import nlpIconURL from './nlp/background.png';
 import nlpInsetIconURL from './nlp/inset.png';
+import imageclassifyIconURL from './imageclassify/background.png';
+import imageclassifyInsetIconURL from './imageclassify/inset.png';
+
 export default [
     {
         name: (
@@ -420,6 +423,19 @@ export default [
             />
         ),
         featured: true
+    },
+    {
+        name: 'Image Classification',
+        extensionId: 'imageclassify',
+        iconURL: imageclassifyIconURL,
+        insetIconURL: imageclassifyInsetIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Train a camera model in ML Lab, then use class blocks."
+                description="Image classification extension description"
+                id="gui.extension.imageclassify.description"
+            />
+        ),
+        featured: true
     }
 ];
-

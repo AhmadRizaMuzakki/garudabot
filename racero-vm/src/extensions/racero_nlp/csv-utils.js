@@ -1,4 +1,19 @@
-const createCsvTemplate = () => 'text,class\r\n';
+const CSV_EXAMPLES = [
+    ['hello', 'greeting'],
+    ['good morning', 'greeting'],
+    ['goodbye', 'farewell'],
+    ['see you', 'farewell']
+];
+
+const exampleClasses = () => CSV_EXAMPLES.reduce((classes, row) => {
+    if (!classes.includes(row[1])) classes.push(row[1]);
+    return classes;
+}, []);
+
+const createCsvTemplate = () => ['text,class']
+    .concat(CSV_EXAMPLES.map(row => row.join(',')))
+    .join('\r\n')
+    .concat('\r\n');
 
 const parseCsv = csv => {
     const rows = [];
@@ -55,4 +70,4 @@ const parseCsv = csv => {
         .filter(sample => sample.text.trim() && sample.label.trim());
 };
 
-module.exports = {createCsvTemplate, parseCsv};
+module.exports = {createCsvTemplate, exampleClasses, parseCsv};

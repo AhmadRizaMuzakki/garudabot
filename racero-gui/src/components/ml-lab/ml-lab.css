@@ -1,0 +1,1176 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    background-color: $ui-modal-overlay;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 5100;
+    padding: 1rem;
+}
+
+.modal {
+    background: $ui-white;
+    border-radius: 0.75rem;
+    width: min(920px, 96vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: $text-primary;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.15rem;
+    background: $extensions-primary;
+    color: $ui-white;
+    flex-shrink: 0;
+}
+
+.titleBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.subtitle {
+    margin: 0;
+    font-size: 0.8rem;
+    color: $ui-white-dim;
+}
+
+.closeButton {
+    border: none;
+    background: $ui-white-transparent;
+    color: $ui-white;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 1.25rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.closeButton:hover {
+    background: $ui-white-dim;
+    color: $extensions-primary;
+}
+
+.tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.55rem 1.15rem 0;
+    background: $ui-secondary;
+    border-bottom: 1px solid $ui-black-transparent;
+    flex-shrink: 0;
+}
+
+.tab {
+    border: none;
+    background: transparent;
+    color: $text-primary-transparent;
+    padding: 0.55rem 1rem;
+    border-radius: 0.45rem 0.45rem 0 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: inherit;
+}
+
+.tab:hover {
+    color: $text-primary;
+    background: $ui-white-transparent;
+}
+
+.tabActive {
+    background: $ui-white;
+    color: $text-primary;
+    box-shadow: 0 -1px 0 $ui-white;
+}
+
+.body {
+    padding: 1rem 1.15rem;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    background: $ui-primary;
+}
+
+.modePanel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+}
+
+.modeSection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.modeSectionHead {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.modeSectionHint {
+    margin: 0;
+    font-size: 0.82rem;
+    color: $text-primary;
+    opacity: 0.65;
+    line-height: 1.35;
+}
+
+.modeOr {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgba(0, 0, 0, 0.35);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.modeOr::before,
+.modeOr::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.modeSelectedNote {
+    font-weight: 400;
+    opacity: 0.7;
+}
+
+.modeGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.modeCard {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    text-align: left;
+    padding: 0.9rem 1rem;
+    border-radius: 0.65rem;
+    border: 2px solid $ui-black-transparent;
+    background: $ui-white;
+    cursor: pointer;
+    font-family: inherit;
+    color: $text-primary;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.modeCard:hover {
+    border-color: $extensions-primary;
+    box-shadow: 0 2px 10px rgba(42, 53, 56, 0.1);
+}
+
+.modeCardActive {
+    border-color: $extensions-primary;
+    background: $ui-secondary;
+    box-shadow: 0 0 0 1px $extensions-primary;
+}
+
+.modeMark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.1rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 999px;
+    background: $extensions-primary;
+    color: $ui-white;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.modeCardActive .modeMark {
+    background: $motion-primary;
+}
+
+.modeTitle {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.modeDesc {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: $text-primary-transparent;
+    line-height: 1.35;
+}
+
+.modeSelected {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: $extensions-primary;
+}
+
+.modeGridSplit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.modeCardLarge {
+    min-height: 8.5rem;
+    padding: 1.1rem 1.15rem;
+}
+
+.modeCardObjects.modeCardActive {
+    border-color: #FF8A65;
+    box-shadow: 0 0 0 1px #FF8A65;
+    background: rgba(255, 138, 101, 0.08);
+}
+
+.modeCardFaces.modeCardActive {
+    border-color: #4ECDC4;
+    box-shadow: 0 0 0 1px #4ECDC4;
+    background: rgba(78, 205, 196, 0.1);
+}
+
+.modeCardObjects.modeCardActive .modeMark {
+    background: #FF8A65;
+}
+
+.modeCardFaces.modeCardActive .modeMark {
+    background: #2A9D8F;
+}
+
+.modeBannerRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.75rem;
+    margin-top: 0.15rem;
+}
+
+.modeBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.22rem 0.55rem;
+    border-radius: 0.4rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.modeBadgeObjects {
+    background: #E76F51;
+}
+
+.modeBadgeFaces {
+    background: #2A9D8F;
+}
+
+.modeBadgeTm {
+    background: #5C6BC0;
+}
+
+.tmPanel {
+    margin-top: 0;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0.65rem;
+    background: #f7f8fb;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.tmPanelActive {
+    border-color: #5C6BC0;
+    box-shadow: 0 0 0 2px rgba(92, 107, 192, 0.15);
+}
+
+.tmInput {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.45rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.tmInput:focus {
+    outline: none;
+    border-color: #5C6BC0;
+    box-shadow: 0 0 0 2px rgba(92, 107, 192, 0.2);
+}
+
+.tmActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.tmOk {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #2A9D8F;
+    font-weight: 600;
+}
+
+.tmErr {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #c62828;
+    font-weight: 600;
+}
+
+@media (max-width: 640px) {
+    .modeGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .modeGridSplit {
+        grid-template-columns: 1fr;
+    }
+}
+
+.photoLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
+    gap: 1rem;
+    min-height: 0;
+}
+
+@media (max-width: 820px) {
+    .photoLayout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.photoMain,
+.classesPanel,
+.trainPanel,
+.previewLayout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.classesPanel {
+    max-height: 520px;
+}
+
+.panelTitle {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: $text-primary;
+}
+
+.hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: $text-primary-transparent;
+    line-height: 1.35;
+}
+
+.photoCamera {
+    position: relative;
+    flex-shrink: 0;
+    border-radius: 0.6rem;
+    overflow: hidden;
+}
+
+.cameraWrap {
+    position: relative;
+    background: $extensions-primary;
+    border-radius: 0.6rem;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.shutterOverlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    padding: 1.25rem 0.5rem 0.65rem;
+    background: linear-gradient(180deg, rgba(15, 20, 25, 0) 0%, rgba(15, 20, 25, 0.45) 45%, rgba(15, 20, 25, 0.78) 100%);
+    /* Harus menerima pointer — pointer-events:none bikin shutter macet di WebView2 */
+    pointer-events: auto;
+}
+
+.shutterOverlay .shutterBar {
+    padding: 0;
+    gap: 0.45rem;
+}
+
+/* Chip class di atas tombol — ala Teachable Machine */
+.shutterOverlay .shutterChip {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: transparent;
+    color: #222;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.28rem 0.7rem 0.28rem 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.shutterOverlay .shutterChipActive {
+    background: #ef5350;
+    color: #fff;
+}
+
+.shutterOverlay .shutterChipCount {
+    background: rgba(0, 0, 0, 0.12);
+    color: inherit;
+    font-weight: 700;
+    min-width: 1.5rem;
+}
+
+.shutterOverlay .shutterChipActive .shutterChipCount {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.shutterOverlay .shutterHint {
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Tombol Hold to Record — ring putih tebal + isi solid (gaya TM) */
+.shutterOverlay .shutterButton {
+    width: 4.75rem;
+    height: 4.75rem;
+    min-width: 4.75rem;
+    min-height: 4.75rem;
+    border-width: 5px;
+    border-color: #fff;
+    background: transparent;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.shutterOverlay .shutterInner {
+    width: 3.35rem;
+    height: 3.35rem;
+    background: #ef5350;
+    border-radius: 50%;
+}
+
+.shutterOverlay .shutterBursting {
+    border-color: #fff;
+    box-shadow: 0 0 0 5px rgba(239, 83, 80, 0.35);
+}
+
+.shutterOverlay .shutterBursting .shutterInner {
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.45rem;
+    background: #ef5350;
+}
+
+.shutterOverlay .shutterBursting .shutterPulse {
+    border-color: rgba(239, 83, 80, 0.55);
+}
+
+.video {
+    width: 100%;
+    height: 100%;
+    /* contain = seluruh frame terlihat (sama letterbox model), bukan crop tengah */
+    object-fit: contain;
+    transform: scaleX(-1);
+    background: $extensions-primary;
+}
+
+.detectFrame {
+    position: absolute;
+    inset: 0.55rem;
+    border: 1.5px solid rgba(78, 205, 196, 0.4);
+    border-radius: 0.35rem;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Guide foto mode objek — selaras OBJECT_CAPTURE_GUIDE (x0.16 y0.10 w0.68 h0.62) */
+.detectFrameObject {
+    /* top right bottom left */
+    inset: 10% 16% 28% 16%;
+    border-color: rgba(129, 199, 132, 0.9);
+    border-width: 2px;
+    border-style: dashed;
+    border-radius: 0.55rem;
+    background: rgba(129, 199, 132, 0.08);
+}
+
+/* Guide foto mode wajah — lebih lebar & nyaman */
+.detectFrameFace {
+    inset: 12% 18% 18% 18%;
+    border-color: rgba(78, 205, 196, 0.75);
+    border-width: 2px;
+    border-radius: 50%;
+    background: rgba(78, 205, 196, 0.05);
+}
+
+.captureTip {
+    margin: 0.35rem 0 0;
+    text-align: center;
+    font-size: 0.78rem;
+    color: $text-primary-transparent;
+    line-height: 1.3;
+}
+
+.detectBox {
+    position: absolute;
+    border: 2px solid currentColor;
+    border-radius: 0.15rem;
+    pointer-events: none;
+    z-index: 3;
+    box-sizing: border-box;
+    opacity: 1;
+    box-shadow: none;
+    outline: none;
+}
+
+/* Skeleton sudut kotak — warna ikut class (currentColor) */
+.boxSkelTL,
+.boxSkelTR,
+.boxSkelBL,
+.boxSkelBR {
+    position: absolute;
+    width: 18%;
+    height: 18%;
+    min-width: 10px;
+    min-height: 10px;
+    max-width: 22px;
+    max-height: 22px;
+    border-color: currentColor;
+    border-style: solid;
+    pointer-events: none;
+}
+
+.boxSkelTL {
+    top: -1px;
+    left: -1px;
+    border-width: 3px 0 0 3px;
+}
+
+.boxSkelTR {
+    top: -1px;
+    right: -1px;
+    border-width: 3px 3px 0 0;
+}
+
+.boxSkelBL {
+    bottom: -1px;
+    left: -1px;
+    border-width: 0 0 3px 3px;
+}
+
+.boxSkelBR {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 3px 3px 0;
+}
+
+.detectBoxTag {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform: translateY(-100%);
+    margin-top: -2px;
+    padding: 0.12rem 0.4rem;
+    border-radius: 0.25rem 0.25rem 0.25rem 0;
+    color: #1a1a1a;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.detectCornerTL,
+.detectCornerTR,
+.detectCornerBL,
+.detectCornerBR {
+    position: absolute;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-color: #4ecdc4;
+    border-style: solid;
+}
+
+.detectCornerTL {
+    top: -1px;
+    left: -1px;
+    border-width: 3px 0 0 3px;
+    border-top-left-radius: 0.25rem;
+}
+
+.detectCornerTR {
+    top: -1px;
+    right: -1px;
+    border-width: 3px 3px 0 0;
+    border-top-right-radius: 0.25rem;
+}
+
+.detectCornerBL {
+    bottom: -1px;
+    left: -1px;
+    border-width: 0 0 3px 3px;
+    border-bottom-left-radius: 0.25rem;
+}
+
+.detectCornerBR {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 3px 3px 0;
+    border-bottom-right-radius: 0.25rem;
+}
+
+.cameraPlaceholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $ui-white-dim;
+    font-size: 0.9rem;
+    padding: 1rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+.flash {
+    position: absolute;
+    inset: 0;
+    background: $ui-white;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.flashActive {
+    animation: mlFlash 0.25s ease-out;
+}
+
+@keyframes mlFlash {
+    0% { opacity: 0.85; }
+    100% { opacity: 0; }
+}
+
+.shutterBar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    padding: 0.35rem 0 0.15rem;
+}
+
+.shutterMeta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.6rem;
+}
+
+.shutterChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    padding: 0.2rem 0.55rem 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: $ui-secondary;
+    border: 1px solid $ui-black-transparent;
+    color: $text-primary;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.shutterChipActive {
+    background: $extensions-primary;
+    border-color: $extensions-primary;
+    color: $ui-white;
+}
+
+.shutterDot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: #ff6b6b;
+    flex-shrink: 0;
+    animation: shutterDotPulse 0.9s ease-in-out infinite;
+}
+
+.shutterChipName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 9rem;
+}
+
+.shutterChipCount {
+    min-width: 1.35rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: $ui-black-transparent;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.72rem;
+    text-align: center;
+}
+
+.shutterChipActive .shutterChipCount {
+    background: $ui-white-transparent;
+    color: $ui-white;
+}
+
+.shutterButton {
+    position: relative;
+    width: 4.5rem;
+    height: 4.5rem;
+    min-width: 4.5rem;
+    min-height: 4.5rem;
+    border-radius: 50%;
+    border: 3px solid $extensions-primary;
+    background: $ui-white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 2px 10px rgba(42, 53, 56, 0.18);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.shutterButton:hover:not(:disabled) {
+    box-shadow: 0 3px 14px rgba(42, 53, 56, 0.22);
+}
+
+.shutterButton:active:not(:disabled),
+.shutterBursting:not(:disabled) {
+    transform: scale(0.96);
+}
+
+.shutterBursting:not(:disabled) {
+    border-color: #c62828;
+    box-shadow: 0 0 0 4px rgba(198, 40, 40, 0.16);
+}
+
+.shutterButton:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.shutterPulse {
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.shutterBursting .shutterPulse {
+    border-color: rgba(198, 40, 40, 0.45);
+    animation: shutterRingPulse 1s ease-out infinite;
+}
+
+.shutterInner {
+    width: 3.1rem;
+    height: 3.1rem;
+    border-radius: 50%;
+    background: $extensions-primary;
+    pointer-events: none;
+    transition: background 0.15s ease, border-radius 0.15s ease, transform 0.15s ease;
+}
+
+.shutterBursting .shutterInner {
+    background: #c62828;
+    border-radius: 0.7rem;
+    width: 2.35rem;
+    height: 2.35rem;
+}
+
+.shutterHint {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: $text-primary-transparent;
+    text-align: center;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+    min-height: 1.1rem;
+}
+
+@keyframes shutterRingPulse {
+    0% {
+        transform: scale(0.92);
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1.18);
+        opacity: 0;
+    }
+}
+
+@keyframes shutterDotPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+.classList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding-right: 0.15rem;
+}
+
+.classCard {
+    border: 2px solid $ui-black-transparent;
+    border-radius: 0.55rem;
+    padding: 0.7rem;
+    background: $ui-white;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.classCard:hover {
+    border-color: $ui-tertiary;
+}
+
+.classCardActive {
+    border-color: $looks-secondary;
+    box-shadow: 0 0 0 2px $looks-light-transparent;
+}
+
+.classHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+}
+
+.className {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: $text-primary;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.classNameInput {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0.15rem 0.35rem;
+    border: 1px solid transparent;
+    border-radius: 0.35rem;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: $text-primary;
+    outline: none;
+    cursor: text;
+}
+
+.classNameInput:hover {
+    border-color: $ui-black-transparent;
+    background: $ui-primary;
+}
+
+.classNameInput:focus {
+    border-color: $extensions-primary;
+    background: $ui-white;
+}
+
+.sampleMeta {
+    font-size: 0.75rem;
+    color: $text-primary-transparent;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.sampleGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.sampleThumb {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 0.3rem;
+    background: $ui-tertiary;
+    pointer-events: none;
+}
+
+.classActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.addClassBtn {
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.65rem;
+}
+
+.statCard {
+    background: $ui-white;
+    border: 1px solid $ui-black-transparent;
+    border-radius: 0.55rem;
+    padding: 0.85rem 0.65rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.statValue {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: $extensions-primary;
+}
+
+.statLabel {
+    font-size: 0.75rem;
+    color: $text-primary-transparent;
+    text-align: center;
+}
+
+.trainClassList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.trainClassItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: $ui-white;
+    border: 1px solid $ui-black-transparent;
+    border-radius: 0.45rem;
+    padding: 0.65rem 0.85rem;
+}
+
+.trainBtn {
+    align-self: flex-start;
+    min-width: 160px;
+    padding: 0.65rem 1.1rem;
+}
+
+.trainStatus {
+    margin: 0.55rem 0 0;
+    font-size: 0.82rem;
+    color: $text-primary;
+    opacity: 0.8;
+}
+
+.trainError {
+    margin: 0.55rem 0 0;
+    font-size: 0.82rem;
+    color: $error-primary;
+    background: $error-light;
+    border-radius: 0.4rem;
+    padding: 0.55rem 0.7rem;
+}
+
+.btn {
+    border: none;
+    border-radius: 0.45rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btnPrimary {
+    background: $extensions-primary;
+    color: $ui-white;
+}
+
+.btnPrimary:hover {
+    background: $extensions-tertiary;
+}
+
+.btnPrimary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btnSecondary {
+    background: $ui-tertiary;
+    color: $text-primary;
+}
+
+.btnDanger {
+    background: $error-light;
+    color: $error-primary;
+}
+
+.btnGhost {
+    background: $ui-white;
+    color: $text-primary;
+    border: 1px solid $ui-black-transparent;
+}
+
+.footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1.15rem;
+    border-top: 1px solid $ui-black-transparent;
+    background: $ui-secondary;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.footerActions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.previewResult {
+    background: $extensions-primary;
+    color: $ui-white;
+    border-radius: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: left;
+    flex-shrink: 0;
+}
+
+.multiLabelList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    max-height: 9.5rem;
+    overflow-y: auto;
+}
+
+.multiLabelRow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+    opacity: 0.72;
+    transition: opacity 0.12s ease;
+}
+
+.multiLabelRowActive {
+    opacity: 1;
+}
+
+.multiLabelHead {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.multiLabelSwatch {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 0.12rem;
+    flex-shrink: 0;
+}
+
+.multiLabelName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.multiLabelPct {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    opacity: 0.9;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.multiLabelEmpty {
+    text-align: center;
+}
+
+.barTrack {
+    height: 8px;
+    background: $ui-white-transparent;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.barFill {
+    height: 100%;
+    background: $motion-primary;
+    border-radius: 999px;
+    transition: width 0.15s ease;
+}

@@ -41,13 +41,15 @@ const builtinExtensions = {
     pinsuno: () => require('../extensions/racero_pins_uno'),
     pinsesp32: () => require('../extensions/racero_pins_esp32'),
     display: () => require('../extensions/racero_display'),
-	fingers: () => require('../extensions/racero_fingers'),
-	expresive: () => require('../extensions/racero_expresive'),
-	recognition: () => require('../extensions/racero_recognition'),
+    fingers: () => require('../extensions/racero_fingers'),
+    expresive: () => require('../extensions/racero_expresive'),
+    recognition: () => require('../extensions/racero_recognition'),
     nlp: () => require('../extensions/racero_nlp'),
     mrtpins: () => require('../extensions/racero_mrt_pins'),
     // Extension modul robot ESP32 (opsional, ditambah lewat Extension Library)
-    robotesp32: () => require('../extensions/racero_robots_esp32')
+    robotesp32: () => require('../extensions/racero_robots_esp32'),
+    // Image Classification + ML Lab (Teachable Machine style)
+    imageclassify: () => require('../extensions/racero_image_classify')
 };
 
 /**

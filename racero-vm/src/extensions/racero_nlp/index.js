@@ -1,12 +1,20 @@
 const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
-const log = require('../../util/log');
-const {createCsvTemplate, parseCsv} = require('./csv-utils');
+const {createCsvTemplate, exampleClasses, parseCsv} = require('./csv-utils');
+const {openCsvFile, saveCsvFile} = require('./csv-file');
 const TextClassifier = require('./text-classifier');
 
+const textArgument = (defaultValue, menu) => {
+    const argument = {
+        type: ArgumentType.STRING,
+        defaultValue
+    };
+    if (menu) argument.menu = menu;
+    return argument;
+};
+
 class RaceroNlp {
-    constructor (runtime) {
-        this.runtime = runtime;
+    constructor () {
         this.classifier = new TextClassifier();
     }
 
@@ -33,14 +41,8 @@ class RaceroNlp {
                     blockType: BlockType.COMMAND,
                     text: 'add [TEXT] as [CLASS]',
                     arguments: {
-                        TEXT: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'text'
-                        },
-                        CLASS: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'class'
-                        }
+                        TEXT: textArgument('hello'),
+                        CLASS: textArgument('greeting')
                     }
                 },
                 {
@@ -58,97 +60,57 @@ class RaceroNlp {
                     blockType: BlockType.REPORTER,
                     text: 'get class of [TEXT]',
                     arguments: {
-                        TEXT: {
-                            type: ArgumentType.STRING,
-                            defaultValue: 'text'
-                        }
+                        TEXT: textArgument('hello')
                     }
+                },
+                {
+                    opcode: 'isClass',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'is [TEXT] class [CLASS]?',
+                    arguments: {
+                        TEXT: textArgument('hello'),
+                        CLASS: textArgument('greeting', 'classMenu')
+                    }
+                },
+                {
+                    opcode: 'getConfidence',
+                    blockType: BlockType.REPORTER,
+                    text: 'confidence of [TEXT]',
+                    arguments: {
+                        TEXT: textArgument('hello')
+                    }
+                },
+                {
+                    opcode: 'isModelTrained',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'model trained?'
+                },
+                {
+                    opcode: 'getSampleCount',
+                    blockType: BlockType.REPORTER,
+                    text: 'number of samples'
                 }
-            ]
+            ],
+            menus: {
+                classMenu: {
+                    acceptReporters: true,
+                    items: () => this.getClassMenu().map(item => [item, item])
+                }
+            }
         };
     }
 
-    async downloadCsvTemplate () {
-        const tauri = typeof window === 'object' ? window.__TAURI__ : null;
-        if (tauri) {
-            try {
-                const filePath = await tauri.core.invoke('plugin:dialog|save', {
-                    options: {
-                        defaultPath: 'nlp-template.csv',
-                        filters: [{name: 'CSV', extensions: ['csv']}]
-                    }
-                });
-                if (filePath) {
-                    await tauri.core.invoke('plugin:fs|write_text_file', {
-                        path: filePath,
-                        contents: createCsvTemplate()
-                    });
-                }
-            } catch (error) {
-                log.error(`Failed to save NLP CSV template: ${error.message}`);
-            }
-            return;
-        }
-
-        const canDownloadInBrowser = typeof document === 'object' &&
-            typeof Blob === 'function' && typeof URL === 'function' &&
-            typeof URL.createObjectURL === 'function';
-        if (canDownloadInBrowser) {
-            const blob = new Blob([createCsvTemplate()], {type: 'text/csv;charset=utf-8'});
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'nlp-template.csv';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(url), 0);
-        }
+    getClassMenu () {
+        const classes = this.classifier.classes;
+        return classes.length ? classes : exampleClasses();
     }
 
-    async importCsv () {
-        const tauri = typeof window === 'object' ? window.__TAURI__ : null;
-        if (tauri) {
-            try {
-                const selectedPath = await tauri.core.invoke('plugin:dialog|open', {
-                    options: {
-                        multiple: false,
-                        filters: [{name: 'CSV', extensions: ['csv']}]
-                    }
-                });
-                const filePath = Array.isArray(selectedPath) ? selectedPath[0] : selectedPath;
-                if (filePath) {
-                    const csv = await tauri.core.invoke('plugin:fs|read_text_file', {path: filePath});
-                    this.classifier.addSamples(parseCsv(csv));
-                }
-            } catch (error) {
-                log.error(`Failed to import NLP CSV: ${error.message}`);
-            }
-            return;
-        }
+    downloadCsvTemplate () {
+        return saveCsvFile('nlp-template.csv', createCsvTemplate());
+    }
 
-        const canImportInBrowser = typeof document === 'object' && typeof FileReader === 'function';
-        if (canImportInBrowser) {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.csv';
-            input.onchange = () => {
-                const file = input.files && input.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        this.classifier.addSamples(parseCsv(reader.result));
-                    } catch (error) {
-                        log.error(`Failed to import NLP CSV: ${error.message}`);
-                    }
-                };
-                reader.onerror = () => log.error('Failed to read NLP CSV file.');
-                reader.readAsText(file);
-            };
-            input.click();
-        }
+    importCsv () {
+        return openCsvFile(csv => this.classifier.addSamples(parseCsv(csv)));
     }
 
     addSample (args) {
@@ -164,7 +126,25 @@ class RaceroNlp {
     }
 
     getClassOf (args) {
-        return this.classifier.predict(args.TEXT);
+        return this.classifier.classify(args.TEXT).label;
+    }
+
+    isClass (args) {
+        const label = this.classifier.classify(args.TEXT).label;
+        const expected = String(args.CLASS === null || typeof args.CLASS === 'undefined' ? '' : args.CLASS).trim();
+        return label !== '' && label === expected;
+    }
+
+    getConfidence (args) {
+        return this.classifier.classify(args.TEXT).confidence;
+    }
+
+    isModelTrained () {
+        return this.classifier.isTrained;
+    }
+
+    getSampleCount () {
+        return this.classifier.samples.length;
     }
 }
 
