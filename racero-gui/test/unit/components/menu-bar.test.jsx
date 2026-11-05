@@ -2,6 +2,7 @@ import React from 'react';
 import {mountWithIntl} from '../../helpers/intl-helpers';
 import MenuBar from '../../../src/components/menu-bar/menu-bar';
 import {menuInitialState} from '../../../src/reducers/menus';
+import {boardInitialState} from '../../../src/reducers/board';
 import {LoadingState} from '../../../src/reducers/project-state';
 import {DEFAULT_THEME} from '../../../src/lib/themes';
 
@@ -16,6 +17,7 @@ describe('MenuBar Component', () => {
             locale: 'en-US'
         },
         raceroGui: {
+            board: boardInitialState,
             menus: menuInitialState,
             projectState: {
                 loadingState: LoadingState.NOT_LOADED

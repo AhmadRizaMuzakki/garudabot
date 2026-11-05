@@ -379,6 +379,10 @@ const createProject = () => ({
     type: START_CREATING_NEW
 });
 
+const remixProject = () => ({
+    type: START_REMIXING
+});
+
 const doneCreatingProject = (id, loadingState) => {
     switch (loadingState) {
     case LoadingState.CREATING_NEW:
@@ -540,6 +544,7 @@ export {
     onFetchedProjectData,
     onLoadedProject,
     projectError,
+    remixProject,
     requestNewProject,
     requestProjectUpload,
     saveProjectAsCopy,
